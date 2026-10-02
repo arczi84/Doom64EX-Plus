@@ -362,10 +362,9 @@ boolean I_UpdateGrab(void) {
 
 	currently_grabbed = grab;
 #ifdef AMIGA_MINIGL
-    /* Menu mouse is free to leave the window. Hide the Amiga pointer only
-       where the game's cursor is drawn; gameplay capture also hides it. */
-    SDL_ShowCursor(grab || (window_focused && menuactive &&
-        m_menumouse.value && Amiga_MouseInClient()) ? SDL_DISABLE : SDL_ENABLE);
+    /* Hide the system pointer throughout the client area, including loading
+       and intros. Outside the window the Workbench pointer remains visible. */
+    SDL_ShowCursor(grab || Amiga_MouseInClient() ? SDL_DISABLE : SDL_ENABLE);
 #endif
 
 	return currently_grabbed;

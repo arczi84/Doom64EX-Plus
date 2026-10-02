@@ -71,10 +71,11 @@ boolean Amiga_MouseInClient(void) {
     struct Window *native;
     if (!window || !MiniGLDispatch) return false;
     native = (struct Window *)mglGetWindowHandle();
-    return native && native->MouseX >= native->BorderLeft &&
-        native->MouseX < native->Width - native->BorderRight &&
-        native->MouseY >= native->BorderTop &&
-        native->MouseY < native->Height - native->BorderBottom;
+    return native && (!InWindow ||
+        (native->MouseX >= native->BorderLeft &&
+         native->MouseX < native->Width - native->BorderRight &&
+         native->MouseY >= native->BorderTop &&
+         native->MouseY < native->Height - native->BorderBottom));
 }
 
 void I_InitScreen(void) {
@@ -102,13 +103,14 @@ void I_InitScreen(void) {
     mglChooseVertexBufferSize(AMIGA_MGL_VERTEX_CAPACITY);
     screen = window = SDL_SetVideoMode(video_width, video_height, 32, flags);
     if (!screen) I_Error("MiniGL video: %s", SDL_GetError());
+    SDL_ShowCursor(Amiga_MouseInClient() ? SDL_DISABLE : SDL_ENABLE);
     SDL_WM_SetCaption("Doom64EX-Plus MiniGL", NULL);
     mglEnableSync(v_vsync.value != 0 ? GL_TRUE : GL_FALSE);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     SDL_GL_SwapBuffers();
     if (!Amiga_MouseInit()) I_Error("Cannot initialize native mouse capture");
-    SDL_ShowCursor(SDL_ENABLE);
+    SDL_ShowCursor(Amiga_MouseInClient() ? SDL_DISABLE : SDL_ENABLE);
     window_focused = Amiga_WindowFocused();
     usingGL = false;
     initial_mode = 0;
