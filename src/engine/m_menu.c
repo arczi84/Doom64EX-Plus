@@ -218,6 +218,7 @@ static void M_Scroll(menu_t* menu, boolean up);
 static void M_DoVideoReset(int choice);
 
 static boolean M_SetThumbnail(int which);
+static void M_InvalidateThumbnails(void);
 
 CVAR_CMD(m_menufadetime, 0) {
 	if (cvar->value < 0) {
@@ -3352,6 +3353,7 @@ void M_LoadGame(int choice) {
 // Read the strings from the savegame files
 //
 void M_ReadSaveStrings(void) {
+	M_InvalidateThumbnails();
 	int     handle;
 	int     i;
 	// char    name[256];
@@ -3890,22 +3892,45 @@ static char thumbnail_date[32];
 static int thumbnail_skill = -1;
 static int thumbnail_map = -1;
 
+// Save metadata is stable while this menu is open. Cache missing slots too,
+// so rendering never retries disk reads on every frame.
+static struct {
+    boolean loaded;
+    boolean valid;
+    char date[32];
+    int skill;
+    int map;
+} thumbnail_cache[load_end];
+
+static void M_InvalidateThumbnails(void) {
+    memset(thumbnail_cache, 0, sizeof(thumbnail_cache));
+}
+
 static boolean M_SetThumbnail(int which) {
-	byte* data;
+    byte* data;
+    char* filename;
 
-	data = Z_Malloc(SAVEGAMETBSIZE, PU_STATIC, 0);
-
-	//
-	// poke into savegame file and fetch
-	// date and stats
-	//
-    char *filename = P_GetSaveGameName(which);
-    boolean ret = P_QuickReadSaveHeader(filename, thumbnail_date, (int*)data,
-                                        &thumbnail_skill, &thumbnail_map);
-    free(filename);
-	Z_Free(data);
-
-	return ret;
+    if (which < 0 || which >= load_end) {
+        return false;
+    }
+    if (!thumbnail_cache[which].loaded) {
+        data = Z_Malloc(SAVEGAMETBSIZE, PU_STATIC, 0);
+        filename = P_GetSaveGameName(which);
+        thumbnail_cache[which].valid = P_QuickReadSaveHeader(
+            filename, thumbnail_cache[which].date, (int*)data,
+            &thumbnail_cache[which].skill, &thumbnail_cache[which].map);
+        free(filename);
+        Z_Free(data);
+        thumbnail_cache[which].loaded = true;
+    }
+    if (!thumbnail_cache[which].valid) {
+        return false;
+    }
+    memcpy(thumbnail_date, thumbnail_cache[which].date, sizeof(thumbnail_date));
+    thumbnail_date[sizeof(thumbnail_date) - 1] = '\0';
+    thumbnail_skill = thumbnail_cache[which].skill;
+    thumbnail_map = thumbnail_cache[which].map;
+    return true;
 }
 
 //
