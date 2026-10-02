@@ -113,6 +113,7 @@ void G_ExecuteFile(char* name) {
 	fseek(fh, 0, SEEK_SET);
 	buff = Z_Malloc(len + 1, PU_STATIC, NULL);
 	fread(buff, 1, len, fh);
+	fclose(fh);
 	buff[len] = 0;
 	G_ExecuteMultipleCommands(buff);
 	Z_Free(buff);
@@ -133,5 +134,14 @@ void G_LoadSettings(void) {
 	}
     char *filename = G_GetConfigFileName();
 	G_ExecuteFile(filename);
+#ifdef AMIGA_MINIGL
+    {
+        cvar_t *width = CON_CvarGet("v_width");
+        cvar_t *height = CON_CvarGet("v_height");
+        cvar_t *windowed = CON_CvarGet("v_windowed");
+        I_Printf("Settings: loaded %s, resolution %.0fx%.0f, windowed %.0f\n",
+            filename, width->value, height->value, windowed->value);
+    }
+#endif
     free(filename);
 }

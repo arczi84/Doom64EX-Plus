@@ -29,6 +29,9 @@
 #include "m_random.h"
 #include "gl_texture.h"
 #include "doomstat.h"
+#ifdef AMIGA_MINIGL
+#include "m_misc.h"
+#endif
 
 void M_ClearMenus(void);    // from m_menu.c
 
@@ -60,6 +63,27 @@ void WIPE_FadeScreen(int fadetics) {
 	int padw, padh;
 	vtx_t v[4];
 	float left, right, top, bottom;
+#ifdef AMIGA_MINIGL
+    const char *renderer = (const char *)glGetString(GL_RENDERER);
+    /* V3D readback crosses the PiStorm bridge; avoid it for transitions.
+       Power-of-two snapshots can also exceed the driver's texture limit. */
+    if ((renderer && strstr(renderer, "V3D")) ||
+        GL_PadTextureDims(video_width) > gl_max_texture_size ||
+        GL_PadTextureDims(video_height) > gl_max_texture_size) {
+        I_Printf("Transition: direct black frame, no framebuffer readback\n");
+        GL_ClearView(0xFF000000);
+        GL_SwapBuffers();
+        allowmenu = true;
+        return;
+    }
+    byte *test_before=NULL;
+    if(M_CheckParm("-amiga-wipetest")) {
+        test_before=malloc((size_t)video_width*video_height*4);
+        if(!test_before) I_Error("Wipe test: out of memory");
+        glFinish();
+        glReadPixels(0,0,video_width,video_height,GL_RGBA,GL_UNSIGNED_BYTE,test_before);
+    }
+#endif
 
 	allowmenu = false;
 
@@ -116,7 +140,30 @@ void WIPE_FadeScreen(int fadetics) {
 
 		dglSetVertexColor(v, color, 4);
 		GL_Draw2DQuad(v, 1);
-
+#ifdef AMIGA_MINIGL
+        if(test_before) {
+            byte *actual=malloc((size_t)video_width*video_height*4);
+            size_t k,n=(size_t)video_width*video_height;
+            unsigned mismatches=0;
+            GLenum error;
+            if(!actual) I_Error("Wipe test: out of memory");
+            glFinish();
+            glReadPixels(0,0,video_width,video_height,GL_RGBA,GL_UNSIGNED_BYTE,actual);
+            error=glGetError();
+            for(k=0;k<n;++k) {
+                int c;
+                /* Classic MiniGL stores RGBA snapshots in ARGB4444.
+                 * Compare the observed 4-bit conversion exactly. */
+                for(c=0;c<3;++c)
+                    if(actual[k*4+c] != (test_before[k*4+c] >> 4)*17)
+                        ++mismatches;
+            }
+            I_Printf("Amiga wipe test: %dx%d first fade frame mismatches=%u GL error=%u\n",
+                video_width,video_height,mismatches,error);
+            free(actual);free(test_before);test_before=NULL;
+            if(mismatches || error) I_Error("Wipe framebuffer round-trip failed");
+        }
+#endif
 		GL_SwapBuffers();
 
 		WIPE_RefreshDelay();
@@ -135,6 +182,14 @@ void WIPE_FadeScreen(int fadetics) {
 //
 
 void WIPE_MeltScreen(void) {
+#ifdef AMIGA_MINIGL
+    /* The desktop feedback effect copies the complete framebuffer eighty
+       times. MiniGL implements each copy with CPU readback and upload.
+       Use one snapshot and a short fade on the Amiga instead. */
+    M_ClearMenus();
+    WIPE_FadeScreen(16);
+    return;
+#endif
 	int padw, padh;
 	vtx_t v[4];
 	vtx_t v2[4];

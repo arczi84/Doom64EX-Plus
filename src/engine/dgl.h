@@ -3410,6 +3410,9 @@ d_inline static void glViewport_DEBUG(GLint x, GLint y, GLsizei width, GLsizei h
 
 #endif // USE_DEBUG_GLFUNCS
 
+#ifdef AMIGA_MINIGL
+#include "amiga_gl_extensions.h"
+#else
 //
 // GL_ARB_multitexture
 //
@@ -4238,4 +4241,5 @@ boolean has_GL_EXT_texture_filter_anisotropic = false;
 #define GL_EXT_texture_filter_anisotropic_Init() \
 has_GL_EXT_texture_filter_anisotropic = GL_CheckExtension("GL_EXT_texture_filter_anisotropic");
 
+#endif // AMIGA_MINIGL
 #endif // __DGL_H__

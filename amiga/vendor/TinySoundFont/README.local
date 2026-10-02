@@ -1,0 +1,4 @@
+https://github.com/schellingb/TinySoundFont
+Commit: 853a0a171759f1ddba0de1442133a75912bbeffa
+MIT, see LICENSE. Local tsf.h changes: big-endian SF2 scalars, generator
+range byte layout and PCM16 sample decoding. SF3 support is not enabled.

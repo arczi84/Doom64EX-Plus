@@ -1,0 +1,181 @@
+2026-10-02 ANIMATED PALETTE ALLOCATION FIX:
+P_InitPicAnims previously left new texture ID slots uninitialized after
+Z_Realloc. First-map precache and shutdown passed those arbitrary IDs
+to MiniGL deletion. After video Apply, R_Init recreated one-slot world
+textures while cleanup still iterated animation frame counts.
+Track allocated palette slots, zero newly allocated IDs, rebuild all
+known palettes on renderer initialization, and delete only allocated slots.
+PASS: cross-build/check; actual allocator/cleanup host regression with
+ASan/UBSan: poisoned new memory, preserved existing IDs, repeated cleanup
+and palette allocation after renderer reset. No runtime WinUAE result yet.
+
+2026-10-02 PISTORM WINDOW / POINTER / ESC UPDATE:
+Local SDL CGX object opens a normal window without GimmeZeroZero so
+MiniGL BorderLeft/BorderTop presentation offsets match its RastPort.
+Only the native mouse pointer is drawn in menus. Native input.device
+Esc press edges feed engine key down/up events; duplicate SDL Esc is
+ignored. The native handler continues reading Esc while mouse capture
+is released, ignores repeat and inactive-window input.
+PASS: cross-build/check, no unresolved symbols; host ASan/UBSan checks
+of actual native handler for capture/release, repeat, key release/repress
+and inactive-window handling. Local SDL archive has one CGX video object.
+PiStorm3D visual alignment and interactive ESC still require runtime
+verification. No extra 150-percent audio output gain is included.
+
+2026-10-02 AUDIO VOLUME SCALE:
+Menu SFX/music values are percentages (0..100). MiniGL now uses this
+scale instead of dividing by 255; SFX 0..127 attenuation maps directly
+to SDL_mixer 0..128 without the extra division by two.
+PASS: cross-build/check; host channel-volume checks for full, half, mute,
+saturation and ignored invalid/inactive channels. Music scaling inspected.
+Audible balance and clipping during gameplay still need user verification.
+
+2026-10-02 WINDOW CLOSE GUARD:
+MiniGL SDL_QUIT now opens the control panel instead of exiting immediately.
+Repeated close requests leave the menu open. Exit through the Quit menu.
+PASS: cross-build/check, no unresolved symbols; host check of actual quit
+case confirms menu opening, repeated requests, and no immediate I_Quit.
+Sources: /mnt/d/dev/Doom64/Doom64EX-Plus.
+Installed in /mnt/d/dev/Doom64/Doom64EX-Plus-MiniGL.
+Runtime ESC behavior on the user system still needs verification; the
+source of the reported unexpected window closure remains unconfirmed.
+
+2026-10-02 ESC INVESTIGATION:
+The reported window closure on Esc has not been reproduced in the isolated
+WinUAE configuration. Native input.device Esc press/release on MAP01 opens
+the pause menu; a second press resumes gameplay. Both checks passed and
+the test exited normally (Shell RC 0). No menu-behavior fix is claimed.
+Added opt-in -amiga-esctest and -amiga-inputstats, plus explicit SDL_QUIT
+logging, to distinguish key delivery from a window-close request on the
+user's other system. No key remapping or quit suppression was added.
+
+2026-10-02 LEGAL-SCREEN FADE FIX:
+User screenshots show vertical colored stripes when the initial legal
+screen starts fading. Reproduced a MiniGL RGBA sub-upload into an RGB
+texture: 112560 mismatched color components over the 320x240 test image.
+The same copy into an RGBA texture has zero mismatches. Allocate Amiga
+screen snapshots as RGBA and finish pending rendering before readback.
+PASS: manual RGBA copy and actual GL_ScreenToTexture, full image comparison;
+  no mismatches, smoke Shell RC 0.
+PASS: real 640x480 legal-screen first fade frame;
+  zero mismatches after exact high-nibble/ARGB4444 color conversion;
+  GL error 0, complete fade and normal shutdown, Shell RC 0.
+PASS: full legal screen -> MAP33 intro -> ten seconds of menu;
+  target errors 0; 594 menu frames / 10014 ms;
+  mixer avg 3 ms / max 10 ms, normal shutdown, Shell RC 0.
+Saved diagnostic before/after frames confirm no stripes. The conversion
+was independently verified for every color component: output equals
+(input >> 4)*17, maximum color difference 15. Source alpha was 255.
+Tests are opt-in (-amiga-copytest / -amiga-wipetest); no per-frame readback
+or test file writes are added to normal gameplay.
+
+2026-10-02 VIDEO FORMAT CHECK:
+Added opt-in -amiga-videostats: reports SDL surface bits/bytes per pixel and
+native CyberGraphX bitmap depth, bytes per pixel, pixel format and dimensions
+at state transitions or format changes. No mode-switch code was added.
+PASS: legal credits -> MAP33 intro -> title menu in isolated WinUAE test:
+  SDL 32 bpp / 4 bytes, native RTG 32 bits / 4 bytes, pixfmt 12 throughout;
+  screen 1280x800, game window 640x480 throughout;
+  completed intro/menu, target errors 0, normal shutdown, Shell RC 0.
+This test used the isolated boot configuration. The user clarified that
+24-bit was a visual guess, not a reported indicator; screenshots identify
+the legal-screen fade corruption described above.
+
+2026-10-02 INTRO / MENU UPDATE:
+Reproduced exactly two stale target pointers in MAP33 near tics 1179/1200.
+P_DamageMobj assigned target->target directly, bypassing reference counting;
+use P_SetTarget. Fixed the remaining persistent uncounted references in
+revenant missiles and arch-vile fire/resurrection. Temporary facing-target
+swaps and initialization remain direct assignments.
+Added source-location diagnostics for Amiga P_SetTarget validation failures.
+The diagnostics remain visible; invalid pointers are not silently ignored.
+
+Windowed rendering did not apply v_vsync and MiniGL's windowed swap only
+ClipBlits. Apply MiniGL sync and explicitly WaitTOF after the windowed swap
+when v_vsync=1. Audio timing/output quality is unchanged: 22050 Hz stereo.
+
+PASS: complete MAP33 intro followed by ten seconds of menu in WinUAE:
+  target errors: 2 before, 0 after;
+  uncapped menu: 4050 frames / 10000 ms (405 FPS);
+  synchronized menu: 594 frames / 10011 ms (about 59 FPS);
+  full mixer: avg 3 ms / max 8 ms, about 93 ms per audio buffer;
+  synthesis: avg 1 ms / max 5 ms, no synthesis budget overruns;
+  audio task priority 11, max buffer interval 104 ms;
+  normal shutdown, Shell RC 0.
+This establishes the pointer fix and removal of uncapped menu rendering.
+Audible crackling and long gameplay on the user's system need confirmation.
+
+2026-10-01 AUDIO SCHEDULING UPDATE:
+Removed application SetTaskPri(FindTask("SDL subtask"),1). SDL/AHI keeps its
+own audio task at priority 11; do not select arbitrary SDL tasks by shared name.
+Music remains 22050 Hz stereo, 32 synth voices. No quality reduction applied.
+WinUAE MAP01, turning camera, 600 frames + 16 panned looping SFX + MIDI:
+  music callback avg 1 ms / max 4 ms;
+  full mixer avg 5 ms / max 14 ms (buffer duration about 93 ms);
+  max completed-buffer interval 106 ms, measured audio task priority 11;
+  GL errors 0, normal shutdown, Shell RC 0.
+This short test does not reproduce or prove resolution of reported crackling.
+Diagnostics: -amiga-audiostats prints timings at shutdown; -amiga-audiostress
+adds 16 looping effects for automated load testing only. Neither is needed
+for normal play. Runtime synthesis remains at original 22050 Hz quality.
+
+2026-10-01 MUSIC UPDATE: removed offline WAV conversion and its generated
+music directories. TinySoundFont/TinyMidiLoader now synthesize MIDI from the
+active WAD; doomsnd.sf2 is loaded once into RAM. No file I/O in music rendering.
+PASS: host ASan/UBSan and native m68k test of MUSAMB04 with doomsnd.sf2:
+      eight seconds of synthesis, pause, stop, deterministic restart and mute.
+      Both: 337878 nonzero samples, peak 9570. Input MIDI buffer destroyed
+      before rendering, confirming the sequencer owns its parsed events.
+PASS: WinUAE MAP01 + SFX + RAM MIDI, 90 test frames after initial level time,
+      GL errors 0, normal audio/video shutdown, Shell RC 0.
+LIMITS: audible quality and sustained CPU cost are not measured. MIDI loops
+are whole songs plus a two-second tail, not original per-track loop markers.
+The older WAV music validation below is historical and no longer applies.
+
+CURRENT STATUS: interactive graphics testing is ongoing; no release package.
+2026-10-01 movement regression: reproducible 45-degree camera turn showed
+missing walls/floors with both indexed and immediate drawing. Restoring
+DepthMask TRUE before the frame clear removes those holes at the identical
+camera pose. Indexed batched drawing retained. New binary launched for
+manual movement testing. The historical checks below predate this fix.
+
+Doom64EX-Plus MiniGL validation - 2026-10-01
+===========================================
+Upstream: BSzili/Doom64EX-Plus stable 1336e1b; local branch amiga-minigl.
+Target: AmigaOS 3 / 68060 FPU, SDL 1.2, shared MiniGL Classic 27.
+
+PASS: GCC 16 cross-build; Amiga HUNK executable; no unresolved symbols.
+PASS: data-free indexed red-texture / GLboolean / framebuffer smoke test
+      on WinUAE during port development.
+PASS: host vertex-batch regression with address/undefined-behavior sanitizers:
+      indices up to 65535 rebased into bounded batches; order preserved;
+      malformed batches rejected; clipping capacity bound checked.
+PASS: five host tests for WAD/MIDI extraction, bounds and stable music names.
+PASS: MAP01, 640x480 windowed, SFX enabled, music disabled. Waited for
+      three seconds of level time then 90 more gameplay frames.
+      Render/readback GL errors 0; normal save/audio/video exit; Shell RC 0.
+PASS: MAP01, 640x480 fullscreen, SFX + MUSAMB04 WAV music enabled.
+      Same frame test, GL errors 0, normal exit, Shell RC 0.
+
+The emulator used a copied boot system and its own MiniGL installation.
+Original user boot folders and system libraries were not changed.
+
+Fixes associated with the earlier Software Failure reports:
+- Script boolean fields were overwritten using 32-bit stores. Use boolean.
+- Rebuild WAV-only SDL_mixer with the port compiler instead of the old archive.
+- Reserve 4096 MiniGL scratch vertices before SDL creates the context and
+  rebase indexed draws into batches of at most 192 vertices. MiniGL defaults
+  to only 256 scratch entries and does not check incoming vertex indices.
+- Explicitly release engine textures before deleting the graphics context.
+
+The final executable uses the original shared SDL fallback archive, not the
+experimental diagnostic SDL backend. No custom MiniGL runtime was built.
+MINIGL_MAX_TEXTURE_SIZE=1024 is set in Start-Doom64; this controls texture
+size and is independent of the vertex-buffer fix.
+
+Limits: no real Amiga/PiStorm hardware test, long gameplay run, save/load,
+input/focus coverage, network test or FPS benchmark. Music startup is checked
+through SDL_mixer success/logging; audible quality was not assessed. Lighting
+uses the documented single-texture fallback. This remains a test port.
+
+Historical executable SHA256: 758cb97a71bc197de5e618c156c55d639da5989b10775bd76b7fd4c1ef2db9c4

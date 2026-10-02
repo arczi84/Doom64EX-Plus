@@ -139,7 +139,13 @@ mobj_t* P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type);
 void        P_SafeRemoveMobj(mobj_t* mobj);
 void        P_RemoveMobj(mobj_t* th);
 void        P_SpawnPlayer(mapthing_t* mthing);
+#ifdef AMIGA_MINIGL
+void P_SetTargetAt(mobj_t** mop, mobj_t* targ, const char* file, int line);
+#define P_SetTarget(mop, targ) P_SetTargetAt((mop), (targ), __FILE__, __LINE__)
+extern int amiga_target_errors;
+#else
 void        P_SetTarget(mobj_t** mop, mobj_t* targ);
+#endif
 boolean    P_SetMobjState(mobj_t* mobj, statenum_t state);
 void        P_MobjThinker(mobj_t* mobj);
 boolean    P_OnMobjZ(mobj_t* mobj);

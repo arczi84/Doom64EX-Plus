@@ -85,6 +85,7 @@ static int I_PNGFindChunk(png_struct* png_ptr, png_unknown_chunkp chunk) {
 //
 
 d_inline static byte I_GetRGBGamma(int c) {
+    if (i_gamma.value == 0) return (byte)c;
     return (byte)MIN(pow((float)c, (1.0f + (0.01f * i_gamma.value))), 255);
 }
 
@@ -93,10 +94,10 @@ d_inline static byte I_GetRGBGamma(int c) {
 // Increases the palette RGB based on gamma settings
 //
 
-static void I_TranslatePalette(png_colorp dest) {
+static void I_TranslatePalette(png_colorp dest, int count) {
     int i = 0;
 
-    for (i = 0; i < 256; i++) {
+    for (i = 0; i < count; i++) {
         dest[i].red = I_GetRGBGamma(dest[i].red);
         dest[i].green = I_GetRGBGamma(dest[i].green);
         dest[i].blue = I_GetRGBGamma(dest[i].blue);
@@ -235,7 +236,7 @@ byte* I_PNGReadData(int lump, bool palette, bool nopack, bool alpha,
                 }
             }
 
-            I_TranslatePalette(pal);
+            I_TranslatePalette(pal, num_pal);
             png_set_palette_to_rgb(png_ptr);
         }
 
@@ -245,6 +246,9 @@ byte* I_PNGReadData(int lump, bool palette, bool nopack, bool alpha,
             png_set_add_alpha(png_ptr, 0xff, 0);
         }
     }
+
+    // libpng must configure Adam7 before updating row sizes.
+    png_set_interlace_handling(png_ptr);
 
     // refresh png information
     png_read_update_info(png_ptr, info_ptr);

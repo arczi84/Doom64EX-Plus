@@ -31,6 +31,10 @@
 #include "con_console.h"
 #include "i_system.h"
 
+#ifdef AMIGA_MINIGL
+#include "amiga_vertex_batch.h"
+#endif
+
 #define MAXINDICES  0x10000
 
 word statindice = 0;
@@ -128,7 +132,27 @@ void dglDrawGeometry(int count, vtx_t* vtx) {
 	I_Printf("dglDrawGeometry(count=0x%x, vtx=0x%p)\n", count, vtx);
 #endif
 
+#ifdef AMIGA_MINIGL
+    /* MiniGL indexes its fixed scratch buffer with each supplied index.
+       Splitting counts alone is insufficient: rebase the indices as well.
+       Leave the upper half of its 4096 vertices for clipping output. */
+    {
+        static vtx_t batch[AMIGA_BATCH_VERTICES];
+        static word indices[AMIGA_BATCH_VERTICES];
+        int offset = 0;
+        while (offset < indicecnt) {
+            int n = Amiga_CopyTriangleBatch(batch, indices, vtx, count,
+                                           drawIndices + offset, indicecnt - offset);
+            if (n < 0) I_Error("Invalid vertex index in MiniGL draw batch");
+            dglSetVertex(batch);
+            dglDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_SHORT, indices);
+            offset += n;
+        }
+        dglSetVertex(vtx);
+    }
+#else
 	dglDrawElements(GL_TRIANGLES, indicecnt, GL_UNSIGNED_SHORT, drawIndices);
+#endif
 
 	if (devparm) {
 		statindice += indicecnt;

@@ -27,7 +27,9 @@
 #ifndef _WIN32
 #include <unistd.h>
 #include <sys/types.h>
+#ifndef AMIGA_MINIGL
 #include <pwd.h>
+#endif
 #include <time.h>
 #else
 #include <windows.h>
@@ -76,7 +78,9 @@ ticcmd_t        emptycmd;
 //
 
 void I_Sleep(unsigned long usecs) {
-#ifdef _WIN32
+#if defined(AMIGA_MINIGL)
+    SDL_Delay(usecs);
+#elif defined(_WIN32)
 	Sleep((DWORD)usecs);
 #else
 	struct timespec tc;
@@ -312,6 +316,7 @@ char* I_FindDataFile(char* file) {
 		return path;
 	}
 
+#ifndef AMIGA_MINIGL
 	const char* homeDir = getenv("HOME");
 	if (homeDir) {
 		snprintf(path, 511, "%s/.steam/steam/steamapps/common/Doom 64/%s", homeDir, file);
@@ -327,12 +332,14 @@ char* I_FindDataFile(char* file) {
 		}
 	}
 
-	snprintf(path, 511, "%s/GOG Games/DOOM 64/%s", homeDir, file);
-	if (I_FileExists(path)) {
-		I_Printf("I_FindDataFile: Adding GOG Path %s\n", path);
-		return path;
+	if (homeDir) {
+		snprintf(path, 511, "%s/GOG Games/DOOM 64/%s", homeDir, file);
+		if (I_FileExists(path)) {
+			I_Printf("I_FindDataFile: Adding GOG Path %s\n", path);
+			return path;
+		}
 	}
-
+#endif // !AMIGA_MINIGL
 #elif defined(_WIN32)
 	const char* steamPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DOOM 64";
 	snprintf(path, 511, "%s\\%s", steamPath, file);
@@ -411,6 +418,11 @@ void I_Error(const char* string, ...) {
 	I_Printf("\n********* ERROR *********\n");
 	I_Printf("%s", buff);
 
+#ifdef AMIGA_MINIGL
+    /* Return a useful Shell status without hanging automated runs on an error screen. */
+    I_ShutdownVideo();
+    exit(20);
+#endif
 	if (usingGL) {
 		while (1) {
 			GL_ClearView(0xFF000000);
@@ -444,6 +456,9 @@ void I_Warning(const char* string, ...) {
 	I_Printf("\n********* WARNING *********\n");
 	I_Printf("%s", buff);
 
+#ifdef AMIGA_MINIGL
+    return; /* A warning must not terminate the Amiga process. */
+#endif
 	if (usingGL) {
 		while (1) {
 			GL_ClearView(0xFF000000);
@@ -464,10 +479,21 @@ void I_Quit(void) {
 		endDemo = true;
 		G_CheckDemoStatus();
 	}
+#ifdef AMIGA_MINIGL
+    I_Printf("Amiga quit: saving settings\n");
+#endif
 	M_SaveDefaults();
+#ifdef AMIGA_MINIGL
+    I_Printf("Amiga quit: closing audio\n");
+#endif
 	I_ShutdownSound();
+#ifdef AMIGA_MINIGL
+    I_Printf("Amiga quit: closing video\n");
+#endif
 	I_ShutdownVideo();
-
+#ifdef AMIGA_MINIGL
+    I_Printf("Amiga quit: complete\n");
+#endif
 	exit(0);
 }
 

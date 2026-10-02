@@ -143,7 +143,7 @@ void DL_ProcessDrawList(int tag, boolean(*procfunc)(vtxlist_t*, int*)) {
 
 			if (tag != DLT_SPRITE) {
 				if (rover != tail) {
-					if (head->texid == rover->texid && head->params == rover->params) {
+					if (head->texid == rover->texid && head->params == rover->params && head->flags == rover->flags) {
 						continue;
 					}
 				}
@@ -177,10 +177,23 @@ void DL_ProcessDrawList(int tag, boolean(*procfunc)(vtxlist_t*, int*)) {
 
 			// non sprite textures must repeat or mirrored-repeat
 			if (tag == DLT_WALL) {
+#ifdef AMIGA_MINIGL
+                int ms = !!(head->flags & DLF_MIRRORS);
+                int mt = !!(head->flags & DLF_MIRRORT);
+                if (ms || mt) {
+                    int v;
+                    Amiga_BindMirroredWorldTexture(head->texid, ms, mt);
+                    for (v=0;v<drawcount;++v) {
+                        if (ms) drawVertex[v].tu *= 0.5f;
+                        if (mt) drawVertex[v].tv *= 0.5f;
+                    }
+                }
+#else
 				dglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
 					head->flags & DLF_MIRRORS ? GL_MIRRORED_REPEAT : GL_REPEAT);
 				dglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
 					head->flags & DLF_MIRRORT ? GL_MIRRORED_REPEAT : GL_REPEAT);
+#endif
 			}
 			
             if(r_texturecombiner.value > 0) {

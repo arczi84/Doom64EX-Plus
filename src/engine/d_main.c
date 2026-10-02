@@ -551,7 +551,16 @@ static void Legal_Drawer(void) {
 
 static int Legal_Ticker(void) {
 	if ((gametic - pagetic) >= (TICRATE * 5)) {
+#ifdef AMIGA_MINIGL
+        I_Printf("Startup: legal-screen fade begin\n");
+#endif
 		WIPE_FadeScreen(6);
+#ifdef AMIGA_MINIGL
+        I_Printf("Startup: legal-screen fade complete\n");
+#endif
+#ifdef AMIGA_MINIGL
+        if(M_CheckParm("-amiga-wipetest")) I_Quit();
+#endif
 		return 1;
 	}
 
@@ -678,8 +687,14 @@ static void D_SplashScreen(void) {
 	gameaction = ga_nothing;
 
 	skip = D_MiniLoop(Legal_Start, NULL, Legal_Drawer, Legal_Ticker);
+#ifdef AMIGA_MINIGL
+    I_Printf("Startup: legal loop complete, action=%d\n", skip);
+#endif
 
 	if (skip != ga_title) {
+#ifdef AMIGA_MINIGL
+        I_Printf("Startup: intro map begin\n");
+#endif
 		G_RunTitleMap();
 		gameaction = ga_title;
 	}

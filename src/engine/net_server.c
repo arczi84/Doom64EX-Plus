@@ -804,7 +804,7 @@ static void NET_SV_ParseGameData(net_packet_t* packet, net_client_t* client)
 {
 	net_client_recv_t* recvobj;
 	int seq;
-	unsigned int ackseq;
+	int ackseq;
 	int num_tics;
 	unsigned int nowtime;
 	int i;
@@ -827,7 +827,7 @@ static void NET_SV_ParseGameData(net_packet_t* packet, net_client_t* client)
 
 	// Read header
 
-	if (!NET_ReadInt8(packet, (int8_t *)&ackseq)
+	if (!NET_ReadInt8(packet, &ackseq)
 		|| !NET_ReadInt8(packet, &seq)
 		|| !NET_ReadInt8(packet, &num_tics))
 	{
@@ -937,7 +937,7 @@ static void NET_SV_ParseGameData(net_packet_t* packet, net_client_t* client)
 
 static void NET_SV_ParseGameDataACK(net_packet_t* packet, net_client_t* client)
 {
-	unsigned int ackseq;
+	int ackseq;
 
 	if (server_state != SERVER_IN_GAME)
 	{
@@ -946,7 +946,7 @@ static void NET_SV_ParseGameDataACK(net_packet_t* packet, net_client_t* client)
 
 	// Read header
 
-	if (!NET_ReadInt8(packet, (int8_t *)&ackseq))
+	if (!NET_ReadInt8(packet, &ackseq))
 	{
 		return;
 	}

@@ -356,6 +356,11 @@ void W_Init(void) {
 		}
 	}
 	W_HashLumps();
+#ifdef AMIGA_MINIGL
+    if (W_CheckNumForName("DM_START") < 0 || W_CheckNumForName("DM_END") < 0) {
+        I_Error("This port requires DOOM64.WAD from the 2020 remaster; legacy EX/ROM WAD detected (missing DM_START/DM_END).");
+    }
+#endif
 }
 
 static boolean nonmaplump = false;

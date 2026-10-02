@@ -28,6 +28,11 @@
 #include "i_sdlinput.h"
 #include "i_video.h"
 #include "d_main.h"
+#ifdef AMIGA_MINIGL
+#include "g_controls.h"
+#include "amiga_mouse.h"
+#include "m_menu.h"
+#endif
 
 CVAR(v_msensitivityx, 5);
 CVAR(v_msensitivityy, 5);
@@ -46,6 +51,38 @@ int         DualMouse;
 
 boolean    MouseMode;//false=microsoft, true=mouse systems
 boolean window_mouse;
+#ifdef AMIGA_MINIGL
+static boolean amiga_discard_mouse;
+static byte amiga_keys[NUMKEYS];
+static boolean amiga_sdl_escape_press;
+static boolean amiga_pending_quit, amiga_escape_seen;
+static Uint32 amiga_last_escape;
+extern boolean Amiga_WindowFocused(void);
+
+static void Amiga_SyncFocus(void) {
+    boolean focused = Amiga_WindowFocused();
+    event_t ev = {0};
+    int key;
+    if (focused == window_focused) return;
+    window_focused = focused;
+    I_Printf("Input focus: %s\n", focused ? "active" : "inactive");
+    amiga_discard_mouse = true;
+    SDL_GetRelativeMouseState(NULL, NULL);
+    if (!focused) {
+        ev.type = ev_mouseup;
+        D_PostEvent(&ev);
+        for (key = 0; key < NUMKEYS; ++key) {
+            if (!amiga_keys[key]) continue;
+            ev.type = ev_keyup;
+            ev.data1 = key;
+            D_PostEvent(&ev);
+            amiga_keys[key] = 0;
+        }
+    }
+    I_UpdateGrab();
+}
+#endif
+
 //
 // I_TranslateKey
 //
@@ -232,6 +269,17 @@ void I_ReadMouse(void) {
 	static Uint8 lastmbtn = 0;
 
 	SDL_GetRelativeMouseState(&x, &y);
+#ifdef AMIGA_MINIGL
+    {
+        float rawx, rawy;
+        if (Amiga_MouseRead(&rawx, &rawy)) { x = rawx; y = rawy; }
+    }
+    if (!window_focused || amiga_discard_mouse) {
+        lastmbtn = 0;
+        amiga_discard_mouse = false;
+        return;
+    }
+#endif
 	btn = SDL_GetMouseState(&mouse_x, &mouse_y);
 
 	if (x != 0 || y != 0 || btn || (lastmbtn != btn)) {
@@ -247,6 +295,9 @@ void I_ReadMouse(void) {
 }
 
 void I_CenterMouse(void) {
+#ifdef AMIGA_MINIGL
+    if (!Amiga_WindowFocused()) return;
+#endif
 	// Warp the the screen center
 	SDL_WarpMouseInWindow(window, (unsigned short)(video_width / 2), (unsigned short)(video_height / 2));
 
@@ -290,7 +341,13 @@ boolean I_UpdateGrab(void) {
 	grab = /*window_mouse &&*/ !menuactive
 		&& (gamestate == GS_LEVEL)
 		&& !demoplayback;
+#ifdef AMIGA_MINIGL
+    grab = grab && window_focused;
+#endif
 
+#ifdef AMIGA_MINIGL
+    Amiga_MouseGrab(grab);
+#endif
 	if (grab && !currently_grabbed) {
 		SDL_SetWindowRelativeMouseMode(window, 1);
 		SDL_SetWindowMouseGrab(window, 1);
@@ -304,6 +361,12 @@ boolean I_UpdateGrab(void) {
 	}
 
 	currently_grabbed = grab;
+#ifdef AMIGA_MINIGL
+    /* Menu mouse is free to leave the window. Hide the Amiga pointer only
+       where the game's cursor is drawn; gameplay capture also hides it. */
+    SDL_ShowCursor(grab || (window_focused && menuactive &&
+        m_menumouse.value && Amiga_MouseInClient()) ? SDL_DISABLE : SDL_ENABLE);
+#endif
 
 	return currently_grabbed;
 }
@@ -312,28 +375,79 @@ boolean I_UpdateGrab(void) {
 // I_GetEvent
 //
 
+#ifdef AMIGA_MINIGL
+#define DOOM_EVENT_KEY(e) ((e)->key.keysym.sym)
+#else
+#define DOOM_EVENT_KEY(e) ((e)->key.key)
+#endif
+
 void I_GetEvent(SDL_Event* Event) {
 	event_t event;
 	unsigned int mwheeluptic = 0, mwheeldowntic = 0;
 	unsigned int tic = gametic;
+#ifdef AMIGA_MINIGL
+    {
+        static int inputstats=-1;
+        if(inputstats<0) inputstats=M_CheckParm("-amiga-inputstats")!=0;
+        if(inputstats && (Event->type==SDL_KEYDOWN || Event->type==SDL_KEYUP))
+            I_Printf("Input: type=%u key=%d raw=%u focus=%d menu=%d state=%d\n",
+                Event->type,Event->key.keysym.sym,Event->key.keysym.scancode,
+                window_focused,menuactive,gamestate);
+        if(Event->type==SDL_QUIT)
+            I_Printf("Input: SDL_QUIT received, focus=%d menu=%d state=%d\n",
+                window_focused,menuactive,gamestate);
+    }
+#endif
 
 	switch (Event->type) {
 	case SDL_EVENT_KEY_DOWN:
+#ifdef AMIGA_MINIGL
+        if (DOOM_EVENT_KEY(Event) == SDLK_F10 && Amiga_WindowFocused()) {
+            I_Quit();
+            break;
+        }
+        if (DOOM_EVENT_KEY(Event) == SDLK_ESCAPE) {
+            I_Printf("Input: SDL Esc focus=%d menu=%d state=%d\n",
+                window_focused, menuactive, gamestate);
+            amiga_sdl_escape_press = true;
+        }
+        if (!window_focused) break;
+#endif
+		#ifndef AMIGA_MINIGL
 		if (Event->key.repeat)
 			break;
+#endif
 		event.type = ev_keydown;
-		event.data1 = I_TranslateKey(Event->key.key);
+		event.data1 = I_TranslateKey(DOOM_EVENT_KEY(Event));
+#ifdef AMIGA_MINIGL
+        if (event.data1 >= 0 && event.data1 < NUMKEYS)
+            amiga_keys[event.data1] = Event->type == SDL_KEYDOWN;
+#endif
 		D_PostEvent(&event);
 		break;
 
 	case SDL_EVENT_KEY_UP:
 		event.type = ev_keyup;
-		event.data1 = I_TranslateKey(Event->key.key);
+		event.data1 = I_TranslateKey(DOOM_EVENT_KEY(Event));
+#ifdef AMIGA_MINIGL
+        if (event.data1 >= 0 && event.data1 < NUMKEYS)
+            amiga_keys[event.data1] = Event->type == SDL_KEYDOWN;
+#endif
 		D_PostEvent(&event);
 		break;
 
 	case SDL_EVENT_MOUSE_BUTTON_DOWN:
 	case SDL_EVENT_MOUSE_BUTTON_UP:
+#ifdef AMIGA_MINIGL
+        if (!window_focused || amiga_discard_mouse) break;
+        if (Event->button.button == SDL_BUTTON_WHEELUP || Event->button.button == SDL_BUTTON_WHEELDOWN) {
+            event.type = Event->type == SDL_MOUSEBUTTONDOWN ? ev_keydown : ev_keyup;
+            event.data1 = Event->button.button == SDL_BUTTON_WHEELUP ? KEY_MWHEELUP : KEY_MWHEELDOWN;
+            event.data2 = event.data3 = 0;
+            D_PostEvent(&event);
+            break;
+        }
+#endif
 		if (!window_focused)
 			break;
 
@@ -345,6 +459,16 @@ void I_GetEvent(SDL_Event* Event) {
 		D_PostEvent(&event);
 		break;
 
+#ifdef AMIGA_MINIGL
+    case SDL_ACTIVEEVENT:
+        /* Classic SDL reports IDCMP activation as APPMOUSEFOCUS, not
+           APPINPUTFOCUS. Query the actual Intuition window, not that bit. */
+        Amiga_SyncFocus();
+        amiga_discard_mouse = true;
+        SDL_GetRelativeMouseState(NULL, NULL);
+        if (Event->active.state & SDL_APPMOUSEFOCUS) window_mouse = Event->active.gain;
+        break;
+#else
 	case SDL_EVENT_MOUSE_WHEEL:
 		if (Event->wheel.y > 0) {
 			event.type = ev_keydown;
@@ -379,8 +503,15 @@ void I_GetEvent(SDL_Event* Event) {
 		window_mouse = false;
 		break;
 
+#endif
 	case SDL_EVENT_QUIT:
+#ifdef AMIGA_MINIGL
+        /* Decide after polling: Esc and a close request can arrive together,
+           in either order, on the Amiga SDL window backend. */
+        amiga_pending_quit = true;
+#else
 		I_Quit();
+#endif
 		break;
 
 	default:
@@ -411,7 +542,7 @@ int I_ShutdownWait(void) {
 
 	while (SDL_PollEvent(&event)) {
 		if (event.type == SDL_EVENT_QUIT ||
-			(event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
+			(event.type == SDL_EVENT_KEY_DOWN && DOOM_EVENT_KEY(&event) == SDLK_ESCAPE)) {
 			I_ShutdownVideo();
 			return 1;
 		}
@@ -426,15 +557,57 @@ int I_ShutdownWait(void) {
 
 void I_StartTic(void) {
 	SDL_Event Event;
+#ifdef AMIGA_MINIGL
+    amiga_sdl_escape_press = false;
+    amiga_pending_quit = false;
+    Amiga_SyncFocus();
+#endif
 
 	while (SDL_PollEvent(&Event)) {
 		I_GetEvent(&Event);
 	}
+#ifdef AMIGA_MINIGL
+    {
+        if (Amiga_ReadQuitPress() && Amiga_WindowFocused())
+            I_Quit();
+        int presses = Amiga_ReadEscapePress();
+        event_t escape = {0};
+        if (amiga_sdl_escape_press || presses) {
+            amiga_last_escape = SDL_GetTicks();
+            amiga_escape_seen = true;
+        }
+        if (amiga_pending_quit) {
+            if (amiga_escape_seen && SDL_GetTicks() - amiga_last_escape < 250) {
+                I_Printf("Input: ignoring SDL_QUIT accompanying Esc\n");
+            } else {
+                I_Printf("Input: window Close -> quit\n");
+                I_Quit();
+            }
+        }
+        if (presses)
+            I_Printf("Input: native Esc presses=%d SDL=%d focus=%d menu=%d state=%d\n",
+                presses, amiga_sdl_escape_press, window_focused, menuactive, gamestate);
+        /* Prefer SDL delivery; native input is only a fallback. */
+        if (amiga_sdl_escape_press) presses = 0;
+        if (!Amiga_WindowFocused()) presses = 0;
+        while (presses-- > 0) {
+            escape.type = ev_keydown;
+            escape.data1 = KEY_ESCAPE;
+            D_PostEvent(&escape);
+            escape.type = ev_keyup;
+            D_PostEvent(&escape);
+        }
+    }
+#endif
 
 #if defined(_WIN32) && defined(USE_XINPUT)
 	I_XInputPollEvent();
 #endif
 	I_InitInputs();
+#ifdef AMIGA_MINIGL
+    Amiga_SyncFocus();
+    I_UpdateGrab();
+#endif
 	I_ReadMouse();
 }
 
@@ -443,8 +616,22 @@ void I_StartTic(void) {
 //
 
 void I_FinishUpdate(void) {
+#ifdef AMIGA_MINIGL
+    extern void Amiga_TestFrame(void);
+    extern void Amiga_VideoStats(void);
+    Amiga_VideoStats();
+    Amiga_TestFrame();
+#endif
 	I_UpdateGrab();
 	SDL_GL_SwapWindow(window);
+#ifdef AMIGA_MINIGL
+    {
+        extern void Amiga_StartAudio(void);
+        extern void Amiga_FrameSync(void);
+        Amiga_StartAudio();
+        Amiga_FrameSync();
+    }
+#endif
 
 	BusyDisk = false;
 }

@@ -937,6 +937,9 @@ void P_SetupPlanes(void) {
 
 void P_SetupLevel(int map, int playermask, skill_t skill) {
 	int i;
+#ifdef AMIGA_MINIGL
+    I_Printf("Level: setup MAP%d begin\n", map);
+#endif
 
 	CON_DPrintf("--------P_SetupLevel--------\n");
 
@@ -970,6 +973,9 @@ void P_SetupLevel(int map, int playermask, skill_t skill) {
 	P_InitTextureHashTable();
 
 	W_CacheMapLump(map);
+#ifdef AMIGA_MINIGL
+    I_Printf("Level: map cached, loading geometry\n");
+#endif
 	P_LoadMacros(ML_MACROS);
 	P_LoadVertexes(ML_VERTEXES);
 	P_LoadSectors(ML_SECTORS);
@@ -984,6 +990,9 @@ void P_SetupLevel(int map, int playermask, skill_t skill) {
 	P_LoadLights(ML_LIGHTS);
 	P_GroupLines();
 	P_LoadThings(ML_THINGS);
+#ifdef AMIGA_MINIGL
+    I_Printf("Level: geometry and things loaded\n");
+#endif
 	W_FreeMapLump();
 
 	dmemset(taglist, 0, sizeof(int) * MAXQUEUELIST);
@@ -1014,6 +1023,9 @@ void P_SetupLevel(int map, int playermask, skill_t skill) {
 
 	// preload graphics
 	R_PrecacheLevel();
+#ifdef AMIGA_MINIGL
+    I_Printf("Level: precache complete\n");
+#endif
 	R_SetupLevel();
 
 	Z_CheckHeap();
@@ -1404,10 +1416,25 @@ int P_GetNumSkies(void) {
 //
 
 void P_Init(void) {
+#ifdef AMIGA_MINIGL
+    I_Printf("SC_Init\n");
+#endif
 	SC_Init();
+#ifdef AMIGA_MINIGL
+    I_Printf("P_InitPicAnims\n");
+#endif
 	P_InitPicAnims();
+#ifdef AMIGA_MINIGL
+    I_Printf("R_InitSprites\n");
+#endif
 	R_InitSprites(sprnames);
+#ifdef AMIGA_MINIGL
+    I_Printf("P_InitMapInfo\n");
+#endif
 	P_InitMapInfo();
+#ifdef AMIGA_MINIGL
+    I_Printf("P_InitSkyDef\n");
+#endif
 	P_InitSkyDef();
 }
 

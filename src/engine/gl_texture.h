@@ -28,6 +28,7 @@ extern int                  curgfx;
 extern word* texturewidth;
 extern word* textureheight;
 extern dtexture** textureptr;
+void GL_AllocateTexturePalettes(int texnum, int frames);
 extern int                  t_start;
 extern int                  t_end;
 extern int                  swx_start;
@@ -79,4 +80,8 @@ void        GL_ResampleTexture(unsigned int* in, int inwidth, int inheight,
 	unsigned int* out, int outwidth, int outheight,
 	int type);
 
+#endif
+
+#ifdef AMIGA_MINIGL
+void Amiga_BindMirroredWorldTexture(int texnum, int mirrors, int mirrort);
 #endif

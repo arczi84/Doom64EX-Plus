@@ -271,7 +271,11 @@ byte* GL_GetScreenBuffer(int x, int y, int width, int height) {
     //
     // 20120313 villsa - force pack alignment to 1
     //
+#ifdef AMIGA_MINIGL
+    pack = 4; /* MiniGL does not expose PACK_ALIGNMENT through GetIntegerv. */
+#else
     dglGetIntegerv(GL_PACK_ALIGNMENT, &pack);
+#endif
     dglPixelStorei(GL_PACK_ALIGNMENT, 1);
     dglFlush();
     dglReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
@@ -335,6 +339,9 @@ void GL_SetDefaultCombiner(void) {
         GL_SetTextureUnit(0, true);
     }
 
+#ifdef AMIGA_MINIGL
+    GL_SetTextureUnit(0, true);
+#endif
     GL_CheckFillMode();
 
     if(r_texturecombiner.value > 0) {
@@ -350,6 +357,9 @@ void GL_SetDefaultCombiner(void) {
 //
 
 void GL_SetColorScale(void) {
+#ifdef AMIGA_MINIGL
+    return; /* RGB_SCALE is not supported by the MiniGL texture environment. */
+#endif
     if (!usingGL) {
         return;
     }
@@ -500,6 +510,11 @@ void GL_ClearView(rcolor clearcolor) {
 
     dglGetColorf(clearcolor, f);
     dglClearColor(f[0], f[1], f[2], f[3]);
+#ifdef AMIGA_MINIGL
+    /* Disabling depth testing also disables Warp3D's ZBUFFERUPDATE state.
+       Re-enable writes for the clear, or depth from older frames can survive. */
+    dglDepthMask(GL_TRUE);
+#endif
     dglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     dglViewport(ViewWindowX, ViewWindowY, ViewWidth, ViewHeight);
     dglScissor(ViewWindowX, ViewWindowY, ViewWidth, ViewHeight);
@@ -510,7 +525,7 @@ void GL_ClearView(rcolor clearcolor) {
 //
 
 boolean GL_GetBool(int x) {
-    byte b;
+    GLboolean b;
     dglGetBooleanv(x, &b);
 
     return (bool)b;

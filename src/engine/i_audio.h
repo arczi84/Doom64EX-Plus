@@ -19,9 +19,11 @@
 #ifndef __I_AUDIO_H__
 #define __I_AUDIO_H__
 
+#ifndef AMIGA_MINIGL
 #include <fmod.h>
 #include <fmod_common.h>
 #include <fmod_errors.h>
+#endif
 #include "m_fixed.h"
 
 typedef struct {
@@ -35,6 +37,7 @@ typedef struct {
 
 #define MAX_GAME_SFX 256
 
+#ifndef AMIGA_MINIGL
 struct Sound {
     FMOD_SYSTEM* fmod_studio_system;
     FMOD_SYSTEM* fmod_studio_system_music;
@@ -61,6 +64,8 @@ struct Sound {
 struct Reverb {
     FMOD_REVERB3D* fmod_reverb;
 };
+
+#endif
 
 int I_GetMaxChannels(void);
 int I_GetVoiceCount(void);

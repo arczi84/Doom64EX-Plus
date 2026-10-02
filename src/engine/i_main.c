@@ -492,9 +492,19 @@ int dsnprintf(char* src, unsigned int n, const char* str, ...) {
 //
 
 int main(int argc, char *argv[]) {
+#ifdef AMIGA_MINIGL
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+#endif
 	myargc = argc;
 	myargv = argv;
 
+#ifdef AMIGA_MINIGL
+    if (M_CheckParm("-amiga-smoketest")) {
+        extern int Amiga_SmokeTest(void);
+        return Amiga_SmokeTest();
+    }
+#endif
 	D_DoomMain();
 
 	return 0;

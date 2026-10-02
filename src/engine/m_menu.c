@@ -3463,6 +3463,9 @@ static void M_DoVideoReset(int choice) {
 	I_Init();
 	R_Init();
 	GL_Init();
+#ifdef AMIGA_MINIGL
+    M_SaveDefaults();
+#endif
 }
 
 //
@@ -3478,6 +3481,9 @@ void M_ReturnToOptions(int choice) {
 //
 
 static void M_Return(int choice) {
+#ifdef AMIGA_MINIGL
+    M_SaveDefaults();
+#endif
 	currentMenu->lastOn = itemOn;
 	if (currentMenu->prevMenu) {
 		menufadefunc = M_MenuFadeOut;
@@ -3491,6 +3497,9 @@ static void M_Return(int choice) {
 //
 
 static void M_ReturnInstant(void) {
+#ifdef AMIGA_MINIGL
+    M_SaveDefaults();
+#endif
 	if (currentMenu->prevMenu) {
 		currentMenu = currentMenu->prevMenu;
 		itemOn = currentMenu->lastOn;
@@ -4563,6 +4572,9 @@ static void M_DrawMenuSkull(int x, int y) {
 //
 
 static void M_DrawCursor(float x, float y) {
+#ifdef AMIGA_MINIGL
+    if (!window_focused || !Amiga_MouseInClient()) return;
+#endif
 	if (m_menumouse.value) {
 		int gfxIdx;
 		float factor;
@@ -4846,6 +4858,9 @@ void M_ClearMenus(void) {
 	if (!allowclearmenu) {
 		return;
 	}
+#ifdef AMIGA_MINIGL
+    M_SaveDefaults();
+#endif
 
 	// center mouse before clearing menu
 	// so the input code won't try to

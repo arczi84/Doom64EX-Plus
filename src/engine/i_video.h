@@ -27,6 +27,9 @@ extern SDL_Surface* screen;
 extern SDL_Window* window;
 void I_InitVideo(void);
 void I_InitScreen(void);
+#ifdef AMIGA_MINIGL
+boolean Amiga_MouseInClient(void);
+#endif
 void I_ShutdownVideo(void);
 void V_RegisterCvars();
 

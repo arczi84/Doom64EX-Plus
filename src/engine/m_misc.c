@@ -315,12 +315,21 @@ void M_SaveDefaults(void) {
 	FILE* fh;
 
     char *filename = G_GetConfigFileName();
-	fh = fopen(filename, "wt");
-    free(filename);
+	if (!filename) {
+        I_Printf("Settings: cannot determine config path\n");
+        return;
+    }
+	fh = fopen(filename, "w");
 	if (fh) {
+        int failed;
         G_OutputBindings(fh);
-		fclose(fh);
+        failed = ferror(fh);
+        if (fclose(fh) != 0) failed = 1;
+        I_Printf("Settings: %s %s\n", failed ? "write failed:" : "saved", filename);
+	} else {
+        I_Printf("Settings: cannot write %s (errno %d)\n", filename, errno);
 	}
+    free(filename);
 }
 
 //

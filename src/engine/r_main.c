@@ -333,7 +333,13 @@ void R_PrecacheLevel(void) {
 	mobj_t* mo;
 
 	CON_DPrintf("--------R_PrecacheLevel--------\n");
+#ifdef AMIGA_MINIGL
+    I_Printf("Level: precache, releasing old textures\n");
+#endif
 	GL_DumpTextures();
+#ifdef AMIGA_MINIGL
+    I_Printf("Level: old textures released, loading new textures\n");
+#endif
 
 	texturepresent = (char*)Z_Alloca(numtextures);
 	spritepresent = (char*)Z_Alloca(NUMSPRITES);

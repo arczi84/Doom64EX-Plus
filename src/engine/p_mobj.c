@@ -101,14 +101,24 @@ boolean P_SetMobjState(mobj_t* mobj, statenum_t state) {
 //
 //
 
+#ifdef AMIGA_MINIGL
+int amiga_target_errors;
+void P_SetTargetAt(mobj_t** mop, mobj_t* targ, const char* file, int line) {
+#else
 void P_SetTarget(mobj_t** mop, mobj_t* targ) {
+#endif
 	if (*mop) {
 		if (Z_PointerValidation(*mop)) {
 			Z_Touch(*mop);
 			(*mop)->refcount--;
 		}
 		else {
-			fprintf(stderr, "P_SetTarget: Invalid pointer detected in mop=%p\n", *mop);
+#ifdef AMIGA_MINIGL
+            ++amiga_target_errors;
+            I_Printf("P_SetTarget: invalid old=%p slot=%p new=%p map=%d tic=%d at %s:%d\n", *mop,mop,targ,gamemap,leveltime,file,line);
+#else
+            fprintf(stderr, "P_SetTarget: Invalid pointer detected in mop=%p\n", *mop);
+#endif
 			return;
 		}
 	}
@@ -118,7 +128,12 @@ void P_SetTarget(mobj_t** mop, mobj_t* targ) {
 			targ->refcount++;
 		}
 		else {
-			fprintf(stderr, "P_SetTarget: Invalid pointer detected in targ=%p\n", targ);
+#ifdef AMIGA_MINIGL
+            ++amiga_target_errors;
+            I_Printf("P_SetTarget: invalid new=%p slot=%p map=%d tic=%d at %s:%d\n",targ,mop,gamemap,leveltime,file,line);
+#else
+            fprintf(stderr, "P_SetTarget: Invalid pointer detected in targ=%p\n", targ);
+#endif
 			*mop = NULL;
 		}
 	}

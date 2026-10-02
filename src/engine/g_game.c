@@ -1463,6 +1463,9 @@ void G_SecretExitLevel(int map) {
 
 void G_RunTitleMap(void) {
 	int alpha_title_map = M_CheckParm("-alpha");
+#ifdef AMIGA_MINIGL
+    I_Printf("Intro: map info check\n");
+#endif
 	// villsa 12092013 - abort if map doesn't exist in mapfino
 	if (!alpha_title_map && P_GetMapInfo(33) == NULL) {
 		return;
@@ -1471,6 +1474,9 @@ void G_RunTitleMap(void) {
 		return;
 	}
 
+#ifdef AMIGA_MINIGL
+    I_Printf("Intro: allocate demo buffer\n");
+#endif
 	demobuffer = (byte*)Z_Calloc(0x16000, PU_STATIC, NULL);
 	demo_p = demobuffer;
 	demobuffer[0x16000 - 1] = DEMOMARKER;
@@ -1489,8 +1495,21 @@ void G_RunTitleMap(void) {
 	demoplayback = true;
 	iwadDemo = true;
 
+#ifdef AMIGA_MINIGL
+    I_Printf("Intro: load level\n");
+#endif
 	G_DoLoadLevel();
+#ifdef AMIGA_MINIGL
+    I_Printf("Intro: level loaded, starting playback\n");
+#endif
 	D_MiniLoop(P_Start, P_Stop, P_Drawer, P_Ticker);
+#ifdef AMIGA_MINIGL
+    if(M_CheckParm("-amiga-introtest")) {
+        I_Printf("Amiga intro test: finished MAP%d, target errors=%d\n",gamemap,amiga_target_errors);
+        extern int amiga_intro_finished;
+        amiga_intro_finished=1;
+    }
+#endif
 }
 
 //

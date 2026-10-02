@@ -1,0 +1,4 @@
+SDL_mixer SDL-1.2 branch, commit 31fe14e9043e1a19caa42dce744b06bc0b648a56
+https://github.com/libsdl-org/SDL_mixer/tree/31fe14e9043e1a19caa42dce744b06bc0b648a56
+Subset needed by the PCM WAV-only build. See COPYING for the zlib license.
+Built with the same 68060/libnix compiler options as the game.

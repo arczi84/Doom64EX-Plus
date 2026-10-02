@@ -46,6 +46,7 @@ int         t_end;
 int         swx_start;
 int         numtextures;
 dtexture** textureptr;
+static int *texturepalettecount;
 word* texturewidth;
 word* textureheight;
 word* texturetranslation;
@@ -86,13 +87,26 @@ typedef struct {
 } gl_env_state_t;
 
 static gl_env_state_t gl_env_state[GL_MAX_TEX_UNITS];
+#ifdef AMIGA_MINIGL
+static int curunit = 0;
+#else
 static int curunit = -1;
+#endif
 
 CVAR_EXTERNAL(r_fillmode);
+#ifdef AMIGA_MINIGL
+CVAR_CMD(r_texturecombiner, 0) {
+#else
 CVAR_CMD(r_texturecombiner, 1) {
+#endif
 	int i;
 
+#ifdef AMIGA_MINIGL
+    r_texturecombiner.value = 0;
+    curunit = 0;
+#else
 	curunit = -1;
+#endif
 
 	for (i = 0; i < GL_MAX_TEX_UNITS; i++) {
 		dmemset(&gl_env_state[i], 0, sizeof(gl_env_state_t));
@@ -119,6 +133,19 @@ static CMD(ResetTextures) {
 // InitWorldTextures
 //
 
+void GL_AllocateTexturePalettes(int texnum, int frames) {
+    int oldcount;
+    if (texnum < 0 || texnum >= numtextures || frames < 1)
+        I_Error("Invalid animated texture palette allocation");
+    oldcount = texturepalettecount[texnum];
+    if (frames <= oldcount) return;
+    textureptr[texnum] = Z_Realloc(textureptr[texnum],
+        frames * sizeof(dtexture), PU_STATIC, NULL);
+    memset(textureptr[texnum] + oldcount, 0,
+        (frames - oldcount) * sizeof(dtexture));
+    texturepalettecount[texnum] = frames;
+}
+
 static void InitWorldTextures(void) {
 	int i = 0;
 
@@ -127,6 +154,7 @@ static void InitWorldTextures(void) {
 	swx_start = -1;
 	numtextures = (t_end - t_start) + 1;
 	textureptr = (dtexture**)Z_Calloc(sizeof(dtexture*) * numtextures, PU_STATIC, NULL);
+    texturepalettecount = Z_Calloc(sizeof(*texturepalettecount) * numtextures, PU_STATIC, NULL);
 	texturetranslation = Z_Calloc(numtextures * sizeof(word), PU_STATIC, NULL);
 	palettetranslation = Z_Calloc(numtextures * sizeof(word), PU_STATIC, NULL);
 	texturewidth = Z_Calloc(numtextures * sizeof(word), PU_STATIC, NULL);
@@ -152,6 +180,7 @@ static void InitWorldTextures(void) {
 		png = I_PNGReadData(t_start + i, true, true, false, &w, &h, NULL, 0);
 
 		textureptr[i][0] = 0;
+        texturepalettecount[i] = 1;
 		texturewidth[i] = w;
 		textureheight[i] = h;
 
@@ -159,7 +188,65 @@ static void InitWorldTextures(void) {
 	}
 
 	CON_DPrintf("%i world textures initialized\n", numtextures);
+    /* On video Apply animation definitions already exist. Rebuild every
+       palette slot before precaching or binding animated textures. */
+    for (i = 0; i < numanimdef; ++i)
+        if (animdefs[i].palette)
+            GL_AllocateTexturePalettes(W_GetNumForName(animdefs[i].name) - t_start,
+                animdefs[i].frames);
 }
+
+#ifdef AMIGA_MINIGL
+typedef struct amiga_mirror_s {
+    struct amiga_mirror_s *next;
+    int texnum, palette, flags;
+    dtexture id;
+} amiga_mirror_t;
+static amiga_mirror_t *amiga_mirrors;
+static void Amiga_ClearMirroredTextures(void) {
+    while (amiga_mirrors) {
+        amiga_mirror_t *next = amiga_mirrors->next;
+        glDeleteTextures(1, &amiga_mirrors->id);
+        free(amiga_mirrors);
+        amiga_mirrors = next;
+    }
+    GL_ResetTextures();
+}
+void Amiga_BindMirroredWorldTexture(int texnum, int mirrors, int mirrort) {
+    amiga_mirror_t *entry;
+    byte *png, *tile;
+    int w,h,tw,th,x,y,palette,flags = mirrors | (mirrort << 1);
+    texnum = texturetranslation[texnum];
+    palette = palettetranslation[texnum];
+    for (entry=amiga_mirrors;entry;entry=entry->next)
+        if (entry->texnum==texnum && entry->palette==palette && entry->flags==flags) break;
+    if (!entry) {
+        png=I_PNGReadData(t_start+texnum,false,true,true,&w,&h,NULL,palette);
+        tw=mirrors?w*2:w; th=mirrort?h*2:h;
+        if (tw > gl_max_texture_size || th > gl_max_texture_size)
+            I_Error("Mirrored texture %dx%d exceeds MiniGL limit %d",tw,th,gl_max_texture_size);
+        tile=malloc((size_t)tw*th*4);
+        entry=calloc(1,sizeof(*entry));
+        if (!tile || !entry) I_Error("Mirrored texture: out of memory");
+        for (y=0;y<th;++y) for (x=0;x<tw;++x) {
+            int sx=x<w?x:2*w-1-x, sy=y<h?y:2*h-1-y;
+            memcpy(tile+((size_t)y*tw+x)*4,png+((size_t)sy*w+sx)*4,4);
+        }
+        glGenTextures(1,&entry->id);
+        glBindTexture(GL_TEXTURE_2D,entry->id);
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,tw,th,0,GL_RGBA,GL_UNSIGNED_BYTE,tile);
+        free(tile); Z_Free(png);
+        entry->texnum=texnum; entry->palette=palette; entry->flags=flags;
+        entry->next=amiga_mirrors; amiga_mirrors=entry;
+    }
+    glBindTexture(GL_TEXTURE_2D,entry->id);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);
+    GL_SetTextureFilter();
+    /* Next ordinary bind must not reuse the previous cached world binding. */
+    GL_ResetTextures();
+}
+#endif
 
 //
 // GL_BindWorldTexture
@@ -495,6 +582,9 @@ dtexture GL_ScreenToTexture(void) {
 	dtexture id;
 	int width;
 	int height;
+#ifdef AMIGA_MINIGL
+    I_Printf("Framebuffer copy: begin %dx%d\n", video_width, video_height);
+#endif
 
 	dglEnable(GL_TEXTURE_2D);
 
@@ -512,11 +602,20 @@ dtexture GL_ScreenToTexture(void) {
 	dglTexImage2D(
 		GL_TEXTURE_2D,
 		0,
-		GL_RGB8,
+#ifdef AMIGA_MINIGL
+        /* The MiniGL RGBA sub-upload corrupts RGB destinations. */
+        GL_RGBA8,
+#else
+        GL_RGB8,
+#endif
 		width,
 		height,
 		0,
-		GL_RGB,
+#ifdef AMIGA_MINIGL
+        GL_RGBA,
+#else
+        GL_RGB,
+#endif
 		GL_UNSIGNED_BYTE,
 		0
 	);
@@ -672,6 +771,12 @@ void GL_UnloadTexture(dtexture* texture) {
 //
 
 void GL_SetTextureUnit(int unit, int enable) {
+#ifdef AMIGA_MINIGL
+    /* Track requested units so unsupported secondary-unit state is ignored. */
+    curunit = unit;
+    if (unit == 0) GL_SetState(GLSTATE_TEXTURE0, enable);
+    return;
+#endif
 	if (!has_GL_ARB_multitexture) {
 		return;
 	}
@@ -699,6 +804,9 @@ void GL_SetTextureUnit(int unit, int enable) {
 //
 
 void GL_SetTextureMode(int mode) {
+#ifdef AMIGA_MINIGL
+    if (curunit != 0) return;
+#endif
 	gl_env_state_t* state;
 
 	state = &gl_env_state[curunit];
@@ -882,26 +990,16 @@ int GL_PadTextureDims(int n) {
 //
 
 void GL_DumpTextures(void) {
+#ifdef AMIGA_MINIGL
+    Amiga_ClearMirroredTextures();
+#endif
 	int i;
 	int j;
 	int p;
 
 	for (i = 0; i < numtextures; i++) {
-		GL_UnloadTexture(&textureptr[i][0]);
-
-		for (p = 0; p < numanimdef; p++) {
-			int lump = W_GetNumForName(animdefs[p].name) - t_start;
-
-			if (lump != i) {
-				continue;
-			}
-
-			if (animdefs[p].palette) {
-				for (j = 1; j < animdefs[p].frames; j++) {
-					GL_UnloadTexture(&textureptr[i][j]);
-				}
-			}
-		}
+        for (j = 0; j < texturepalettecount[i]; ++j)
+            GL_UnloadTexture(&textureptr[i][j]);
 	}
 
 	for (i = 0; i < numsprtex; i++) {

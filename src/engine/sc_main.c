@@ -165,11 +165,8 @@ static int SC_SetData(void* data, const scdatatable_t* table) {
 				*(int*)pointer = sc_parser.getint();
 				break;
 			case 'b':
-#ifndef __APPLE__
-				*(int*)pointer = true;
-#else
+				/* Boolean fields are one byte on every target, including big-endian 68k. */
 				*(boolean*)pointer = true;
-#endif
 				break;
 			case 'c':
 				sc_parser.compare("="); // expect a '='

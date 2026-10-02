@@ -76,3 +76,9 @@ Windows/DOOM64EX+/x64/Release/Doom64EX+.vcxproj.FileListAbsolute.txt
 Windows/DOOM64EX+/x64/Debug/Doom64EX+.vcxproj.FileListAbsolute.txt
 /Xcode/*.dylib
 /XCode/DOOM64EXPlus.xcodeproj/project.xcworkspace/xcuserdata
+
+# Amiga cross-build and local emulator fixtures
+/[Dd][Oo][Oo][Mm]64.[Ww][Aa][Dd]
+/build-amiga/
+/dist/
+__pycache__/
