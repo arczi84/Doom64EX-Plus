@@ -3937,6 +3937,16 @@ static boolean M_SetThumbnail(int which) {
 // M_DrawSaveGameFrontend
 //
 
+#ifdef AMIGA_MINIGL
+// MiniGL cannot render polygon outlines through glPolygonMode.
+static void M_DrawPanelOutline(int left, int top, int right, int bottom) {
+    dglRecti(left, top, right, top + 1);
+    dglRecti(left, bottom - 1, right, bottom);
+    dglRecti(left, top + 1, left + 1, bottom - 1);
+    dglRecti(right - 1, top + 1, right, bottom - 1);
+}
+#endif
+
 static void M_DrawSaveGameFrontend(menu_t* def) {
 	GL_SetState(GLSTATE_BLEND, 1);
 	GL_SetOrtho(0);
@@ -3970,6 +3980,12 @@ static void M_DrawSaveGameFrontend(menu_t* def) {
 	// draw outline for panels
 	//
 	dglColor4ub(240, 86, 84, menualphacolor);
+#ifdef AMIGA_MINIGL
+    M_DrawPanelOutline(def->x - 48, def->y - 12,
+                       def->x + 256, def->y + 156);
+    M_DrawPanelOutline(def->x + 272, def->y - 12,
+                       def->x + 464, def->y + 116);
+#else
 	dglPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	//
 	// save game panel
@@ -3990,6 +4006,7 @@ static void M_DrawSaveGameFrontend(menu_t* def) {
 		def->y + 116
 	);
 	dglPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+#endif
 	dglEnable(GL_TEXTURE_2D);
 
 	//
