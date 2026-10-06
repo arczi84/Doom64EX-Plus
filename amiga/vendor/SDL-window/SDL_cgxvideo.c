@@ -87,6 +87,40 @@ struct Library *CyberGfxBase=NULL;
 struct IntuitionBase *IntuitionBase=NULL;
 struct GfxBase *GfxBase=NULL;
 
+/* Opaque RGB-black backfill, including refresh before the first frame. */
+#include <utility/hooks.h>
+struct SDLStartupBlackBounds {
+    struct Layer *layer;
+    struct Rectangle bounds;
+    LONG offset_x, offset_y;
+};
+ULONG SDLStartupBlackFill(struct Hook *hook, struct RastPort *rp,
+        struct SDLStartupBlackBounds *message)
+{
+    struct RastPort target;
+    (void)hook;
+    if(!rp) return 0;
+    target=*rp;
+    /* Backfill bounds are bitmap coordinates; do not offset them again
+       through the window Layer. Keep the caller RastPort unchanged. */
+    target.Layer=NULL;
+    if(message && message->bounds.MaxX>=message->bounds.MinX &&
+       message->bounds.MaxY>=message->bounds.MinY)
+        FillPixelArray(&target,message->bounds.MinX,message->bounds.MinY,
+            message->bounds.MaxX-message->bounds.MinX+1,
+            message->bounds.MaxY-message->bounds.MinY+1,0xff000000UL);
+    return 0;
+}
+extern void SDLStartupBlackEntry(void);
+__asm__(".text\n.even\n.globl _SDLStartupBlackEntry\n_SDLStartupBlackEntry:\n"
+        "movem.l %d1/%a0-%a2,-(%sp)\n"
+        "move.l %a1,-(%sp)\nmove.l %a2,-(%sp)\nmove.l %a0,-(%sp)\n"
+        "jsr _SDLStartupBlackFill\nlea 12(%sp),%sp\n"
+        "movem.l (%sp)+,%d1/%a0-%a2\nrts\n");
+static struct Hook SDLStartupBlackHook = {{NULL,NULL},
+    (HOOKFUNC)SDLStartupBlackEntry,NULL,NULL};
+
+
 void SDL_AmigaLockWindow()
 {
 ObtainSemaphore (&sem);
@@ -992,7 +1026,7 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 				//RectFill(&sc->RastPort,0,0,w-1,h-1); 
 				if (left !=0 || top != 0)
 				{
-				SDL_Window_Background = OpenWindowTags(NULL,WA_Left,0,WA_Top,0, 
+				SDL_Window_Background = OpenWindowTags(NULL,WA_BackFill,(ULONG)&SDLStartupBlackHook,WA_Left,0,WA_Top,0,
 											WA_Flags,WFLG_SIMPLE_REFRESH | WFLG_ACTIVATE|WFLG_RMBTRAP|WFLG_BORDERLESS|WFLG_BACKDROP
 											/*|WFLG_REPORTMOUSE */,
 											WA_IDCMP,0,
@@ -1002,10 +1036,9 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 				}
 				if (SDL_Window_Background)
 				{
-				SetAPen(SDL_Window_Background->RPort,1); // rest of display should be black
-				RectFill(SDL_Window_Background->RPort,0,0,SDL_Window_Background->Width-1,SDL_Window_Background->Height); 
+				FillPixelArray(SDL_Window_Background->RPort,0,0,SDL_Window_Background->Width,SDL_Window_Background->Height,0xff000000UL);
 				}
-				SDL_Window = OpenWindowTags(NULL,WA_Left,left,WA_Top,top,WA_Width,w,WA_Height,h, 
+				SDL_Window = OpenWindowTags(NULL,WA_BackFill,(ULONG)&SDLStartupBlackHook,WA_Left,left,WA_Top,top,WA_Width,w,WA_Height,h,
 											WA_Flags,WFLG_ACTIVATE|WFLG_RMBTRAP|WFLG_BORDERLESS | WFLG_REPORTMOUSE ,
 											WA_IDCMP,IDCMP_RAWKEY|IDCMP_MOUSEBUTTONS|IDCMP_MOUSEMOVE |IDCMP_ACTIVEWINDOW|IDCMP_INACTIVEWINDOW,
 											WA_CustomScreen,(ULONG)SDL_Display,
@@ -1021,13 +1054,15 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 			else
 			{
 				/* Create GimmeZeroZero window when OpenGL is used */
-				/* MiniGL ClipBlit uses coordinates including window borders. */
-                unsigned long gzz = FALSE;
+				/* MiniGL presents at BorderLeft/BorderTop. Give OpenGL a normal
+                 * window layer: GZZ creates a separate client layer whose
+                 * backfill ignores WA_BackFill and exposes the desktop. */
+                unsigned long gzz = (flags & SDL_OPENGL) ? FALSE : TRUE;
 				/*if( flags & SDL_OPENGL ) {
 					gzz = TRUE;
 				}*/
                
-				SDL_Window = OpenWindowTags(NULL,WA_Left,left,WA_Top,top,WA_InnerWidth,w,WA_InnerHeight,h,
+				SDL_Window = OpenWindowTags(NULL,WA_BackFill,(ULONG)&SDLStartupBlackHook,WA_Left,left,WA_Top,top,WA_InnerWidth,w,WA_InnerHeight,h,
 											WA_Flags,WFLG_REPORTMOUSE|WFLG_ACTIVATE|WFLG_RMBTRAP | ((flags&SDL_NOFRAME) ? 0 : (WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_DRAGBAR | ((flags&SDL_RESIZABLE) ? WFLG_SIZEGADGET|WFLG_SIZEBBOTTOM : 0))),
 											WA_IDCMP,IDCMP_RAWKEY|IDCMP_CLOSEWINDOW|IDCMP_MOUSEBUTTONS|IDCMP_NEWSIZE|IDCMP_MOUSEMOVE |IDCMP_ACTIVEWINDOW |IDCMP_INACTIVEWINDOW,
 											WA_PubScreen,(ULONG)SDL_Display,
@@ -1041,14 +1076,12 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 		if(!SDL_Window)
 			return -1;
 	}
-    /* Paint the client area before MiniGL creation and asset loading.
-       Use an RGB fill rather than assuming a Workbench black pen. */
-    if (flags & SDL_OPENGL)
-        FillPixelArray(SDL_Window->RPort,
-            SDL_Window->BorderLeft, SDL_Window->BorderTop,
-            SDL_Window->Width - SDL_Window->BorderLeft - SDL_Window->BorderRight,
-            SDL_Window->Height - SDL_Window->BorderTop - SDL_Window->BorderBottom, 0);
-	this->hidden->swap_bytes = 0; 
+	if (!SDL_windowid && SDL_Window && (flags & SDL_OPENGL)) {
+        int ox=(SDL_Window->Flags&WFLG_GIMMEZEROZERO)?0:SDL_Window->BorderLeft;
+        int oy=(SDL_Window->Flags&WFLG_GIMMEZEROZERO)?0:SDL_Window->BorderTop;
+        FillPixelArray(SDL_Window->RPort,ox,oy,w,h,0xff000000UL);
+    }
+    this->hidden->swap_bytes = 0;
     if ((flags & SDL_OPENGL) == 0)
 			{ 
 				switch(GetCyberMapAttr(SDL_Window->RPort->BitMap, CYBRMATTR_PIXFMT))
@@ -1337,7 +1370,7 @@ buildnewscreen:
 				if( dbscroll )
 				{
 				 /* open at native resolution, 2 times the native height */
-				 GFX_Display=OpenScreenTags(NULL,
+				 GFX_Display=OpenScreenTags(NULL,SA_Behind,TRUE,
 				 				SA_Top,0,
 								SA_Left,0,
 								SA_Width,swidth+1,
@@ -1358,7 +1391,7 @@ buildnewscreen:
 				if( !GFX_Display )
 				{
 				 dbscroll = 0;
-				 GFX_Display=OpenScreenTags(NULL,
+				 GFX_Display=OpenScreenTags(NULL,SA_Behind,TRUE,
 								//SA_Width,width,
 								//SA_Height,height,
 								SA_Title,"SDL Screen",
@@ -1380,6 +1413,8 @@ buildnewscreen:
 			else {
 				UnlockPubScreen(NULL,SDL_Display);
 				SDL_Display=GFX_Display;
+                /* Initialize the entire new screen while it is behind. */
+                FillPixelArray(&SDL_Display->RastPort,0,0,SDL_Display->Width,SDL_Display->Height,0xff000000UL);
 	
 				D(bug("Screen opened.\n"));
                 
@@ -1507,6 +1542,7 @@ buildnewscreen:
 	current->flags |= (flags&SDL_RESIZABLE); // Resizable only if the user asked it
 
   done:
+    if((flags&SDL_FULLSCREEN) && SDL_Display && SDL_Window) ScreenToFront(SDL_Display);
 	Delay(1);
 	/* Release the event thread */
 	SDL_Unlock_EventThread();

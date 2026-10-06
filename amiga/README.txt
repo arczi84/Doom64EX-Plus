@@ -1,9 +1,13 @@
+Source of truth: D:\dev\Doom64\Doom64EX-Plus.
+V29 build artifacts: build-amiga-v29.
+
 Doom64EX-Plus MiniGL / AmigaOS 3 - initial test port
 ==================================================
 Based on BSzili/Doom64EX-Plus stable, commit 1336e1b.
 Target: 68060 + FPU, RTG, working Warp3D/PiStorm3D driver, AHI.
-Use the local MiniGL Classic v27 runtime (including its readback fixes).
-The program uses the v12 shared dispatch ABI, also available in v27.
+Use MiniGL Classic 29.1 in LIBS:minigl.library.
+This build uses the V29 token ABI and dispatch ABI 5; older runtimes are
+not compatible. SDL GL glue and the import client are rebuilt with V29.
 Before creating the SDL context it reserves 4096 MiniGL scratch vertices;
 indexed triangles are rebased into batches of at most 192 vertices.
 No SDL3 or FMOD installation is needed. SDL 1.2 and SDL_mixer are linked in.
@@ -23,9 +27,12 @@ or:
 Start-Doom64 is an Execute script with these defaults.
 MINIGL_MAX_TEXTURE_SIZE limits texture dimensions; it does not control the
 vertex scratch buffer. Use -nosound to disable audio, -nomusic to disable music.
-v_vsync defaults to 1. Windowed MiniGL explicitly waits for vertical blank
-at frame presentation, yielding the CPU rather than drawing unlimited menu
-frames. Fullscreen uses MiniGL's synchronization setting.
+v_vsync defaults to 1. SDL uses a borrowed-window MiniGL context in BOTH
+video modes, so the application waits for vertical blank after presentation
+in both window and fullscreen mode. This prevents uncapped menu rendering.
+Command-line video overrides apply at startup only; the video menu can
+subsequently change the mode/resolution. New fullscreen screens initialize
+to black while behind before being shown.
 Save/config paths resolve to PROGDIR:.
 Mouse movement is captured through input.device while the game window is
 active. Escape opens the menu and releases the pointer. Losing focus also
@@ -70,6 +77,15 @@ are not reproduced. Sound quality and CPU cost still need gameplay testing.
 Use -nomusic to compare performance with SFX alone.
 
 RENDERING
+Use the corrected V29.1 runtime with the math-shim fix. The application
+uses native glRotatef again. See MINIGL-v29.1-BUG.txt for hashes and tests.
+Classic 29.1 now initializes window client and offscreen buffers to black
+before the first application frame. -amiga-startuptest with -amiga-smoketest
+checks native window and readback pixels before any GL clear/draw.
+-amiga-modetest also switches window/fullscreen/window and tests OS backfill.
+-amiga-gamemodetest with -warp 1 exercises the exact Doom menu reset path.
+-amiga-pacetest with -warp 1 measures ten seconds of paused-level/menu
+rendering, verifies frame limiting, then exits; use -window or -fullscreen.
 Screen fades copy the framebuffer into an RGBA texture: MiniGL corrupts
 RGBA sub-uploads into RGB textures, producing vertical colored stripes.
 The MiniGL build locks r_texturecombiner to 0 and uses one texture unit.
@@ -85,10 +101,10 @@ BUILD (this workstation)
   make -f Makefile.amiga -j8
   make -f Makefile.amiga check
 
-Override AMIGA_ROOT, DEV_ROOT, MGL_SDK, SDL_ROOT, and SDL_LIB for
+Override AMIGA_ROOT, DEV_ROOT, MGL_SDK, SDL_ROOT, and SDL_BASE_LIB for
 another machine. Defaults match the local OpenLara toolchain/libraries:
   /opt/amiga16-copy: GCC 16, libnix, 68060 hard-float, -O2, no fast-math
-  /mnt/d/dev/Pistorm3D/Pistorm3D_v12: MiniGL shared dispatch SDK
+  /mnt/d/dev/Pistorm3D/MiniGL_Classic_v29.1/libraryroot: MiniGL SDK
   /mnt/d/dev/Pistorm3D/tests/sdl-fullscreen-fallback: SDL MiniGL build
   amiga/vendor/SDL_mixer: pinned SDL 1.2 mixer sources, WAV sound-effect loader
 libpng and zlib come from the selected compiler. SDL_mixer is rebuilt with

@@ -3,7 +3,6 @@
 #pragma push_macro("LONG")
 #undef LONG
 #include <proto/minigl.h>
-#include <clib/minigl_open_protos.h>
 #include <mgl/gl.h>
 #pragma pop_macro("LONG")
 typedef unsigned int GLhandleARB;
@@ -35,7 +34,6 @@ typedef unsigned int GLhandleARB;
 #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84ff
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84fe
 #define GL_CLAMP_TO_EDGE GL_CLAMP
-#define GL_LINE 0x1b01
 #define glRecti(x1,y1,x2,y2) glRectf(x1,y1,x2,y2)
 static inline void Amiga_TexImage2D(GLenum target, GLint level, GLint internal,
         GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels) {
@@ -45,6 +43,11 @@ static inline void Amiga_TexImage2D(GLenum target, GLint level, GLint internal,
 }
 #undef glTexImage2D
 #define glTexImage2D Amiga_TexImage2D
+/* Keep the tested Classic fallbacks; V29 exposes these as unsupported slots. */
+#undef glGetDoublev
+#define glGetDoublev Amiga_GetDoublev
+#undef glCopyTexSubImage2D
+#define glCopyTexSubImage2D Amiga_CopyTexSubImage2D
 void glGetDoublev(GLenum pname, GLdouble *params);
 void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height);
 static inline void glRectf(float x1,float y1,float x2,float y2) {

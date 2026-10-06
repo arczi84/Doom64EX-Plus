@@ -14,6 +14,7 @@
 #include "gl_texture.h"
 #include "amiga_vertex_batch.h"
 #include "amiga_mouse.h"
+#include "z_zone.h"
 
 unsigned long __stack = 1024 * 1024;
 static const char version_tag[] __attribute__((used)) = "$VER: Doom64EX-Plus MiniGL 0.1 (1.10.2026)";
@@ -30,9 +31,10 @@ CVAR(v_windowborderless, 0);
 CVAR_CMD(v_vsync, 1) {
     if(window && MiniGLDispatch) mglEnableSync(cvar->value != 0 ? GL_TRUE : GL_FALSE);
 }
-/* Windowed MiniGL only ClipBlits; it does not wait for vertical blank. */
+/* SDL uses borrowed-window MiniGL contexts in both modes. Classic only
+   ClipBlits those contexts, so both need an explicit vertical-blank wait. */
 void Amiga_FrameSync(void) {
-    if(InWindow && v_vsync.value != 0 && GfxBase) WaitTOF();
+    if(v_vsync.value != 0 && GfxBase) WaitTOF();
 }
 int amiga_intro_finished;
 /* Optional diagnostics: SDL storage format and the actual Workbench bitmap. */
@@ -225,6 +227,31 @@ static int Amiga_CopyTextureTest(vtx_t *v, GLuint source) {
     return fail[1]==0 && fail[2]==0; /* RGBA and the engine path must preserve all colors. */
 }
 
+/* Verify creation and system backfill, not only a GL-cleared frame. */
+static int Amiga_CheckBlackWindow(const char *label) {
+    struct Window *native=(struct Window *)mglGetWindowHandle();
+    int x,y,pass=1,phase;
+    int ox=(native->Flags&WFLG_GIMMEZEROZERO)?0:native->BorderLeft;
+    int oy=(native->Flags&WFLG_GIMMEZEROZERO)?0:native->BorderTop;
+    int w=native->Width-native->BorderLeft-native->BorderRight;
+    int h=native->Height-native->BorderTop-native->BorderBottom;
+    unsigned char pixel[4];
+    for(phase=0;phase<2;++phase) {
+        if(phase) {
+            /* Damage the visible area, then ask the OS to backfill it. */
+            FillPixelArray(native->RPort,ox,oy,w,h,0xffff0000UL);
+            EraseRect(native->RPort,ox,oy,ox+w-1,oy+h-1);
+        }
+        for(y=1;y<=3;++y) for(x=1;x<=3;++x) {
+            ULONG front=ReadRGBPixel(native->RPort,ox+x*w/4,oy+y*h/4);
+            glReadPixels(x*w/4,y*h/4,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
+            if((front&0xffffff)!=0 || pixel[0] || pixel[1] || pixel[2]) pass=0;
+        }
+        printf("Black window %s %s: %s\n",label,phase?"OS refresh":"initial",pass?"PASS":"FAIL");
+    }
+    return pass;
+}
+
 /* Data-free on-target ABI/readback test, using the engine's indexed draw path. */
 int Amiga_SmokeTest(void) {
     GLuint texture;
@@ -244,10 +271,45 @@ int Amiga_SmokeTest(void) {
     if (!SDL_SetVideoMode(320,240,32,SDL_OPENGL)) {
         fprintf(stderr,"Video: %s\n",SDL_GetError()); SDL_Quit(); return 20;
     }
+    if(M_CheckParm("-amiga-startuptest") || M_CheckParm("-amiga-modetest")) {
+        int pass=Amiga_CheckBlackWindow("window");
+        if(M_CheckParm("-amiga-modetest")) {
+            if(!SDL_SetVideoMode(640,480,32,SDL_OPENGL|SDL_FULLSCREEN)) {
+                fprintf(stderr,"Fullscreen transition: %s\n",SDL_GetError());pass=0;
+            } else pass=Amiga_CheckBlackWindow("fullscreen") && pass;
+            if(!SDL_SetVideoMode(320,240,32,SDL_OPENGL)) {
+                fprintf(stderr,"Window transition: %s\n",SDL_GetError());pass=0;
+            } else pass=Amiga_CheckBlackWindow("window restored") && pass;
+        }
+        if(!pass) { SDL_Quit();MiniGLClose();return 20; }
+        SDL_Delay(1000);
+    }
     printf("MiniGL smoke: %s / %s\n",glGetString(GL_RENDERER),glGetString(GL_VERSION));
     glViewport(0,0,320,240);
     glMatrixMode(GL_PROJECTION); glLoadIdentity();
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    if(M_CheckParm("-amiga-rotationtest")) {
+        static const GLfloat axes[4][3]={{1,0,0},{0,1,0},{0,0,1},{1,1,1}};
+        static const GLfloat expected[4][9]={
+            {1,0,0, 0,0,1, 0,-1,0},
+            {0,0,-1, 0,1,0, 1,0,0},
+            {0,1,0, -1,0,0, 0,0,1},
+            {0,1,0, 0,0,1, 1,0,0}
+        };
+        int axis,k,pass=1;
+        GLfloat matrix[16];
+        for(axis=0;axis<4;++axis) {
+            glLoadIdentity();
+            glRotatef(axis==3?120:90,axes[axis][0],axes[axis][1],axes[axis][2]);
+            glGetFloatv(GL_MODELVIEW_MATRIX,matrix);
+            for(k=0;k<9;++k)
+                if(fabs(matrix[(k/3)*4+k%3]-expected[axis][k])>0.0002) pass=0;
+            if(fabs(matrix[15]-1)>0.0002 || glGetError()!=GL_NO_ERROR) pass=0;
+        }
+        printf("Native MiniGL glRotatef axis tests: %s\n",pass?"PASS":"FAIL");
+        if(!pass) { SDL_Quit();MiniGLClose();return 20; }
+        glLoadIdentity();
+    }
     glDisable(GL_CULL_FACE); glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND);
     glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT);
     glGenTextures(1,&texture); glBindTexture(GL_TEXTURE_2D,texture);
@@ -302,6 +364,65 @@ void Amiga_TestFrame(void) {
             I_Printf("Esc test: menu after second Esc=%d\n",menuactive);
             if(menuactive) I_Error("Esc did not resume game");
             I_Printf("Esc test PASS: native key opens menu and resumes gameplay\n");
+            I_Quit();
+        }
+    }
+    if(M_CheckParm("-amiga-menucapture") && gamestate==GS_LEVEL && leveltime>=3*TICRATE) {
+        static Uint32 opened;
+        Uint32 now=SDL_GetTicks();
+        extern void M_StartControlPanel(boolean forcenext);
+        extern void M_SaveGame(int choice);
+        extern void M_LoadGame(int choice);
+        if(!opened) {
+            M_StartControlPanel(false);
+            if(M_CheckParm("-amiga-loadcapture")) M_LoadGame(0); else M_SaveGame(0);
+            opened=now;
+        } else if(now-opened>=2000) {
+            byte *rgb=GL_GetScreenBuffer(0,0,video_width,video_height);
+            FILE *file=fopen(M_CheckParm("-amiga-loadcapture")?"load-menu.ppm":"save-menu.ppm","wb");
+            size_t i,n=(size_t)video_width*video_height;
+            unsigned pink=0;
+            if(!file) I_Error("Menu capture file failed");
+            fprintf(file,"P6\n%d %d\n255\n",video_width,video_height);
+            fwrite(rgb,3,n,file);fclose(file);
+            for(i=0;i<n;++i) if(rgb[i*3]>=220 && rgb[i*3]<=250 &&
+                rgb[i*3+1]>=60 && rgb[i*3+1]<=100 && rgb[i*3+2]>=60 && rgb[i*3+2]<=100) ++pink;
+            I_Printf("Save/load panel test: %u pink pixels of %lu, menu active=%d\n",pink,(unsigned long)n,menuactive);
+            Z_Free(rgb);
+            if(pink>6000 || !menuactive) I_Error("Save/load panel outline regression");
+            I_Quit();
+        }
+    }
+    if(M_CheckParm("-amiga-gamemodetest") && gamestate==GS_LEVEL && leveltime>=3*TICRATE) {
+        static int step;
+        static Uint32 switched;
+        Uint32 now=SDL_GetTicks();
+        extern void Amiga_TestMenuVideoReset(void);
+        if(step==0 || (step==1 && now-switched>=1500)) {
+            CON_CvarSetValue(v_windowed.name,step==0?0:1);
+            Amiga_TestMenuVideoReset();
+            I_Printf("Game video reset: requested=%s actual=%s\n",step==0?"fullscreen":"window",InWindow?"window":"fullscreen");
+            if(InWindow!=(step==0?0:1) || !Amiga_CheckBlackWindow(step==0?"game fullscreen":"game window"))
+                I_Error("Game menu mode transition failed");
+            ++step;switched=SDL_GetTicks();
+        } else if(step==2 && now-switched>=1500) {
+            I_Printf("Game menu mode transition PASS\n");I_Quit();
+        }
+    }
+    if(M_CheckParm("-amiga-pacetest") && gamestate==GS_LEVEL && leveltime>=3*TICRATE) {
+        static Uint32 started;
+        static unsigned count;
+        Uint32 now=SDL_GetTicks();
+        if(!started) {
+            extern void M_StartControlPanel(boolean forcenext);
+            M_StartControlPanel(false);
+            started=now;
+        }
+        ++count;
+        if(now-started>=10000) {
+            I_Printf("Frame pacing test: mode=%s vsync=%g frames=%u elapsed=%lu ms\n",
+                InWindow?"window":"fullscreen",(double)v_vsync.value,count,(unsigned long)(now-started));
+            if(count>700 || !menuactive) I_Error("Frame pacing/menu check failed");
             I_Quit();
         }
     }

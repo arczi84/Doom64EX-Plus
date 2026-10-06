@@ -3469,6 +3469,10 @@ static void M_DoVideoReset(int choice) {
     M_SaveDefaults();
 #endif
 }
+#ifdef AMIGA_MINIGL
+void Amiga_TestMenuVideoReset(void) { M_DoVideoReset(0); }
+#endif
+
 
 //
 // M_ReturnToOptions

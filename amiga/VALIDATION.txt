@@ -1,44 +1,120 @@
-2026-10-02 ANIMATED PALETTE ALLOCATION FIX:
-P_InitPicAnims previously left new texture ID slots uninitialized after
-Z_Realloc. First-map precache and shutdown passed those arbitrary IDs
-to MiniGL deletion. After video Apply, R_Init recreated one-slot world
-textures while cleanup still iterated animation frame counts.
-Track allocated palette slots, zero newly allocated IDs, rebuild all
-known palettes on renderer initialization, and delete only allocated slots.
-PASS: cross-build/check; actual allocator/cleanup host regression with
-ASan/UBSan: poisoned new memory, preserved existing IDs, repeated cleanup
-and palette allocation after renderer reset. No runtime WinUAE result yet.
+2026-10-06 SOURCE CONSOLIDATION / PREVIOUS FIXES RESTORED:
+Authoritative and only active game source: D:\dev\Doom64\Doom64EX-Plus.
+Removed the agent-created stale checkout under D:\dev\jazz2.
+Merged the V29 SDK/import/SDL updates on top of the existing committed port,
+not on top of the earlier stale working copy. Retained all prior source fixes:
+  c992fd9 explicit save/load panel outlines;
+  2dbbfc3 save metadata caching, including absent slots, avoiding per-frame IO;
+  117592b system cursor hiding;
+  0e4a3e8 audio percentage volume, settings, context recreation, palette sizing
+           and the remaining previously committed port changes.
+The new diff to m_menu.c adds only the opt-in bridge to the existing menu reset;
+previous panel and metadata fixes remain in committed code unchanged.
 
-2026-10-02 PISTORM WINDOW / POINTER / ESC UPDATE:
-Local SDL CGX object opens a normal window without GimmeZeroZero so
-MiniGL BorderLeft/BorderTop presentation offsets match its RastPort.
-Only the native mouse pointer is drawn in menus. Native input.device
-Esc press edges feed engine key down/up events; duplicate SDL Esc is
-ignored. The native handler continues reading Esc while mouse capture
-is released, ignores repeat and inactive-window input.
-PASS: cross-build/check, no unresolved symbols; host ASan/UBSan checks
-of actual native handler for capture/release, repeat, key release/repress
-and inactive-window handling. Local SDL archive has one CGX video object.
-PiStorm3D visual alignment and interactive ESC still require runtime
-verification. No extra 150-percent audio output gain is included.
+PASS: native save menu and load menu captures, visually inspected: dark panels
+with thin colored edges, no solid pink fill. Each has 1576 outline/title-color
+pixels out of 307200. Both runs exit RC 0.
+PASS: actual Doom menu video-reset path window -> fullscreen -> window,
+initial and OS-backfill pixels black in both modes, RC 0.
+PASS: updated canonical source pacing, window and fullscreen each 592 frames
+in 10005 ms (~59 FPS), normal shutdown RC 0.
+V29 build directory: build-amiga-v29. Delivery: Doom64EX-Plus-MiniGL folder.
+Added AGENTS.md to pin the source/build/delivery paths and preserve prior fixes.
 
-2026-10-02 AUDIO VOLUME SCALE:
-Menu SFX/music values are percentages (0..100). MiniGL now uses this
-scale instead of dividing by 255; SFX 0..127 attenuation maps directly
-to SDL_mixer 0..128 without the extra division by two.
-PASS: cross-build/check; host channel-volume checks for full, half, mute,
-saturation and ignored invalid/inactive channels. Music scaling inspected.
-Audible balance and clipping during gameplay still need user verification.
+2026-10-06 ACTUAL DOOM MENU RESET / BLACK FULLSCREEN SCREEN:
+Prior pixel tests exercised SDL_SetVideoMode directly, not Doom's menu reset.
+New custom fullscreen screens now open behind, their entire RasterPort is
+filled opaque RGB black, then they are brought forward after window/context
+creation. This prevents the default gray screen from being shown first.
+The correction is in the SDL video core linked into Doom; MiniGL binary is
+unchanged from the last opaque-backfill/cexp-corrected build.
+Command-line mode/resolution overrides apply only on initial video setup;
+v_windowed reflects the actual selected mode and subsequent menu resets use
+settings selected by the user. Native input capture is removed before a mode
+replacement and reinitialized against the new Window afterward.
+PASS: MAP01 using the same M_DoVideoReset function called by the game menu:
+  requested fullscreen -> actual fullscreen, initial/OS-backfill pixels black;
+  requested window -> actual window, initial/OS-backfill pixels black;
+  game resumes rendering between changes, normal shutdown, Shell RC 0.
+-amiga-gamemodetest invokes that exact menu function for automated checks.
+Existing frame-sync wait still applies in both modes.
 
-2026-10-02 WINDOW CLOSE GUARD:
-MiniGL SDL_QUIT now opens the control panel instead of exiting immediately.
-Repeated close requests leave the menu open. Exit through the Quit menu.
-PASS: cross-build/check, no unresolved symbols; host check of actual quit
-case confirms menu opening, repeated requests, and no immediate I_Quit.
-Sources: /mnt/d/dev/Doom64/Doom64EX-Plus.
-Installed in /mnt/d/dev/Doom64/Doom64EX-Plus-MiniGL.
-Runtime ESC behavior on the user system still needs verification; the
-source of the reported unexpected window closure remains unconfirmed.
+2026-10-06 STARTUP / MODE CHANGE / FRAME PACING FIX:
+Reproduced OS refresh failure: initial black pixel tests passed, but erasing
+the client area exposed a non-black window in the old SDL window path.
+SDL OpenGL windows now use a normal border-aware layer rather than GZZ;
+MiniGL presents at BorderLeft/BorderTop. Non-OpenGL SDL retains its GZZ path.
+SDL window, fullscreen and backdrop window creation install black backfill.
+Fullscreen background uses RGB black, not a Workbench palette pen number.
+MiniGL-owned windows also install black backfill. All fills use opaque
+0xff000000 ARGB. Backfill bounds are bitmap-relative, so callbacks draw using
+a local RastPort copy without applying a second window-layer offset.
+SDL_cgxvideo is rebuilt into the application's SDL archive with GCC 6.5.
+
+SDL fullscreen contexts also use Classic's window ClipBlit branch; it does
+not wait for vertical blank. Amiga_FrameSync previously waited only when
+InWindow was true. It now waits in BOTH modes when v_vsync=1.
+PASS: window -> fullscreen -> window restored; before application drawing
+and after red damage + OS EraseRect, all native/readback samples black.
+PASS: native glRotatef and indexed texture smoke, mode test Shell RC 0.
+PASS: paused MAP01 rendering/menu, window 592 frames / 10005 ms (~59 FPS).
+PASS: paused MAP01 rendering/menu, fullscreen 592 frames / 10005 ms (~59 FPS).
+Both pacing runs exited normally with RC 0. This demonstrates frame limiting;
+the user's exact WinUAE CPU percentage and audible quality were not measured.
+Runtime SHA256: ab343f8a370f991944a8b9def8eade7b5edb72f53b230e089582ba104640fc68
+
+2026-10-06 BLACK STARTUP WINDOW:
+Classic still used EraseRect with the Workbench background pen in its own
+window path; the borrowed SDL window path did not initialize the visible
+client area. Default clear color was white; offscreen bitmaps were uninitialized.
+context.c now fills visible client and offscreen RastPorts with RGB black;
+handles GimmeZeroZero client origins separately from window border offsets.
+Default clear color is black. Window borders are preserved.
+PASS: before the first GL clear/draw, nine native window pixel samples and
+nine offscreen readback samples are RGB 0,0,0; startup smoke Shell RC 0.
+PASS: native GLRotatef axis tests and indexed textured smoke, RC 0.
+PASS: real 640x480 legal fade, mismatches 0, GL error 0, RC 0.
+Library sources and binaries updated in MiniGL_Classic_v29.1 only.
+Runtime SHA256: 4c5572909900e624c898bf66a95f15a5df76a8d51671a6c90a209260acc2b29a
+
+2026-10-06 LIBRARY MATH FIX / NATIVE ROTATIONS:
+Reproduced cexp recursion with GCC 6.5 and original libnix fastmath flags.
+Fixed common build rule: math_shim.o gets -fno-builtin -fno-fast-math.
+Generated-code regression check rejects original object and accepts fixed one.
+Fixed stock runtime rebuilt with GCC 6.5; remaining backend retains fastmath.
+Removed Doom64 rotation workaround; now uses actual MiniGL GLRotatef.
+PASS: native rotations X/Y/Z 90 degrees and (1,1,1) 120 degrees, smoke RC 0.
+PASS: native Esc menu/resume MAP01, RC 0.
+PASS: native turning MAP01 180 frames, render/readback errors 0, RC 0.
+Updated default application and fixed Classic library build output.
+See MINIGL-v29.1-BUG.txt for exact corrected runtime hash and source changes.
+
+2026-10-06 V29.1 ROTATION WORKAROUND / SUCCESSFUL RETEST:
+Root cause: recursive cexp in the supplied fastmath runtime, called from
+GLRotatef. Confirmed in object disassembly AND runtime binary bytes.
+See MINIGL-v29.1-BUG.txt for exact build hash, offsets and repair guidance.
+Application computes axis-angle matrix and submits it via glMultMatrixf.
+PASS: MAP01, Esc opens menu and second Esc resumes, RC 0.
+PASS: MAP01, 180 turning frames, GL render/readback errors 0, RC 0;
+frame visually inspected. Temporary per-frame tracing removed.
+Default executable now updated to tested V29.1 build. Old binary backed up
+in build-amiga/Doom64EX-Plus-MiniGL-before-v29. Runtime itself not modified.
+
+2026-10-06 MINIGL CLASSIC 29.1 REBUILD:
+Rebuilt all game objects against MiniGL_Classic_v29.1/libraryroot headers,
+plus SDL_cgxgl and SDL_cgxgl_wrapper, and the SDK import client/stub.
+Dispatch ABI 5 and standard V29 GL tokens throughout. The existing local
+Classic framebuffer-copy and double-matrix fallbacks are retained.
+Build/link and unresolved-symbol check PASS.
+Native runtime: minigl.library 29.1 (5.10.2026), supplied stock 060 build.
+PASS: smoke and RGBA/engine framebuffer copies, RC 0.
+PASS: real legal-screen fade at 640x480, zero mismatches/GL errors, RC 0.
+FAIL: MAP01 Esc test stopped before reaching the native key injection.
+WinUAE capture shows HALT3. No successful gameplay/Esc check with V29.1
+is claimed. Saved as Doom64EX-Plus-MiniGL-v29.1 beside the existing binary;
+the existing default executable has not been replaced.
+Executable SHA256: c66903d76251a3ee301128c0c9ce7e65fe32d42e997f84647612ddbbd083f5c6
+Runtime SHA256: bf5209c8ccc4c2581ecbbfbbdc4c7e82b5658d84a85fdad52889a1252a0eb5a3
 
 2026-10-02 ESC INVESTIGATION:
 The reported window closure on Esc has not been reproduced in the isolated

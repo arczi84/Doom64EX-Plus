@@ -6,7 +6,7 @@ import zipfile
 
 root = Path(__file__).resolve().parent.parent
 files = {
-    'Doom64EX-Plus-MiniGL': root / 'build-amiga/Doom64EX-Plus-MiniGL',
+    'Doom64EX-Plus-MiniGL': root / 'build-amiga-v29/Doom64EX-Plus-MiniGL',
     'doom64ex-plus.wad': root / 'doom64ex-plus.wad',
     'README.txt': root / 'amiga/README.txt',
     'Start-Doom64': root / 'amiga/Start-Doom64',

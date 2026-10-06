@@ -1,0 +1,44 @@
+MiniGL Classic 29.1 / GCC 6.5 math-shim fix -- 2026-10-06
+
+The delivered stock 060-nix20-fastmath runtime recursively called cexp from
+inside cexp. GLRotatef called that function at the first camera rotation,
+causing stack exhaustion and WinUAE HALT3.
+Reproduced with GCC 6.5.0b 250215183648 and the original libnix build flags.
+Makefile_classic_libnix.gcc overrides FLAGS and drops the common -fno-builtin
+protection. GCC folds the sin/cos pair in this libm implementation into cexp.
+This is a reproducible build-configuration failure with GCC 6.5; it does not
+establish that GCC 6.5 generally generates broken code.
+
+Original object evidence:
+  math_shim.o: cexp entry 0x6a, unconditional jsr at 0x88 back to 0x6a.
+  matrix.o: GLRotatef calls _cexp, relocation 0x5a64.
+  recursive cexp function prefix occurs in original runtime at file offset 0x157e.
+Original runtime SHA256:
+  bf5209c8ccc4c2581ecbbfbbdc4c7e82b5658d84a85fdad52889a1252a0eb5a3
+
+FIXED AND TESTED:
+Common Makefile_classic_verified.gcc adds target-specific flags to math_shim.o:
+  -fno-builtin -fno-fast-math
+The rest of the selected fastmath backend retains its optimization flags.
+The common rule also applies when the libnix makefile overrides FLAGS.
+math_shim.c documents this requirement.
+tests/check_math_shim.py runs during 'all' and rejects a cexp self-reference
+or missing direct exp/sin/cos calls in generated object code.
+Regression check FAILS on original GCC 6.5 object, PASSES on corrected object.
+Complete stock runtime rebuilt with the same GCC 6.5 toolchain.
+
+Native WinUAE 68060 tests, using actual library glRotatef (no application workaround):
+  PASS: 90-degree rotations about X/Y/Z and 120 degrees about (1,1,1),
+        queried modelview matrices within 0.0002; native smoke RC 0.
+  PASS: MAP01, native input.device Esc opens menu, second Esc resumes, RC 0.
+  PASS: MAP01, 180 turning frames, render/readback GL errors 0, RC 0.
+Doom64 application's Amiga_Rotatef workaround has been removed.
+Only this stock runtime was tested; ortho and other variants not certified.
+
+Fixed runtime SHA256:
+  ab343f8a370f991944a8b9def8eade7b5edb72f53b230e089582ba104640fc68
+Delivered paths:
+  libraryroot/bin/v29-mathfix-gcc65/stock/minigl.library
+  libraryroot/bin/v29-path-060-nix20-fastmath/stock/minigl.library (updated)
+Install the corrected library as LIBS:minigl.library and restart the game.
+Existing Amiga system installations were not changed; isolated test SYS was updated.
